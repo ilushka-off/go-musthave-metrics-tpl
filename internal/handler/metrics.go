@@ -50,3 +50,28 @@ func (h *MetricsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 }
+
+func (h *MetricsHandler) Value(w http.ResponseWriter, r *http.Request) {
+	metricsType := chi.URLParam(r, "type")
+	metricsName := chi.URLParam(r, "name")
+
+	switch metricsType {
+	case models.Gauge:
+		value, ok := h.storage.Gauge(metricsName)
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Write([]byte(strconv.FormatFloat(value, 'f', -1, 64)))
+	case models.Counter:
+		value, ok := h.storage.Counter(metricsName)
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Write([]byte(strconv.FormatInt(value, 10)))
+	default:
+		w.WriteHeader(http.StatusNotFound)
+	}
+
+}
