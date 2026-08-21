@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/go-chi/chi/v5"
 	models "github.com/ilushka-off/go-musthave-metrics-tpl/internal/model"
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/repository"
 )
@@ -19,9 +20,9 @@ func NewMetricsHandler(s repository.Storage) *MetricsHandler {
 func (h *MetricsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
 
-	metricsType := r.PathValue("type")
-	metricsName := r.PathValue("name")
-	metricsValue := r.PathValue("value")
+	metricsType := chi.URLParam(r, "type")
+	metricsName := chi.URLParam(r, "name")
+	metricsValue := chi.URLParam(r, "value")
 
 	if metricsName == "" {
 		w.WriteHeader(http.StatusNotFound)
