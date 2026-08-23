@@ -41,7 +41,7 @@ func (a *Agent) Run() {
 
 func (a *Agent) poll() {
 	a.gauges = CollectRunTimeGauges()
-	a.pollCount += 1
+	a.pollCount++
 }
 
 func (a *Agent) report() {
