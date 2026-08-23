@@ -12,8 +12,11 @@ func sendMetrics(serverAddress, mType, name, value string) error {
 	if err != nil {
 		return err
 	}
-
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status code %d for %s", resp.StatusCode, url)
+	}
 
 	return nil
 }
