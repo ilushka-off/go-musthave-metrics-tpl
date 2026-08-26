@@ -23,6 +23,8 @@ func (m *mockStorage) UpdateGauge(name string, value float64) { m.gauges[name] =
 func (m *mockStorage) UpdateCounter(name string, value int64) { m.counters[name] += value }
 func (m *mockStorage) Gauge(name string) (float64, bool)      { v, ok := m.gauges[name]; return v, ok }
 func (m *mockStorage) Counter(name string) (int64, bool)      { v, ok := m.counters[name]; return v, ok }
+func (m *mockStorage) AllGauges() map[string]float64          { return m.gauges }
+func (m *mockStorage) AllCounters() map[string]int64          { return m.counters }
 
 func doUpdateRequest(h *MetricsHandler, mType, mName, mValue string) *httptest.ResponseRecorder {
 	mux := NewRouter(h)

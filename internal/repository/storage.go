@@ -5,4 +5,6 @@ type Storage interface {
 	UpdateCounter(name string, value int64)
 	Gauge(name string) (float64, bool)
 	Counter(name string) (int64, bool)
+	AllGauges() map[string]float64
+	AllCounters() map[string]int64
 }

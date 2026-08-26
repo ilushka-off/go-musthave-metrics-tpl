@@ -40,3 +40,24 @@ func (s *MemStorage) Counter(name string) (int64, bool) {
 	v, ok := s.counters[name]
 	return v, ok
 }
+
+func (s *MemStorage) AllGauges() map[string]float64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	result := make(map[string]float64, len(s.gauges))
+	for name, value := range s.gauges {
+		result[name] = value
+	}
+
+	return result
+}
+
+func (s *MemStorage) AllCounters() map[string]int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	result := make(map[string]int64, len(s.counters))
+	for name, value := range s.counters {
+		result[name] = value
+	}
+	return result
+}
