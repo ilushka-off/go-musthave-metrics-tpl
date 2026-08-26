@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"net/http"
 
@@ -10,10 +11,13 @@ import (
 
 func main() {
 
+	addr := flag.String("a", "localhost:8080", "HTTP server address")
+	flag.Parse()
+
 	storage := repository.NewMemStorage()
 	h := handler.NewMetricsHandler(storage)
 	router := handler.NewRouter(h)
-	if err := http.ListenAndServe(":8080", router); err != nil {
+	if err := http.ListenAndServe(*addr, router); err != nil {
 		log.Fatal(err)
 	}
 
