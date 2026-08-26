@@ -8,6 +8,7 @@ import (
 
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/handler"
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/repository"
+	"go.uber.org/zap"
 )
 
 func main() {
@@ -19,9 +20,16 @@ func main() {
 		*addr = envAddr
 	}
 
+	logger, err := zap.NewProduction()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer logger.Sync()
+
 	storage := repository.NewMemStorage()
 	h := handler.NewMetricsHandler(storage)
-	router := handler.NewRouter(h)
+	router := handler.NewRouter(h, logger)
 	if err := http.ListenAndServe(*addr, router); err != nil {
 		log.Fatal(err)
 	}

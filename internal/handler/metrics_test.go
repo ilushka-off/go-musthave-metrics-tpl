@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"go.uber.org/zap"
 )
 
 // mockStorage — простая реализация repository.Storage для теста хендлера в изоляции от MemStorage.
@@ -27,7 +29,7 @@ func (m *mockStorage) AllGauges() map[string]float64          { return m.gauges 
 func (m *mockStorage) AllCounters() map[string]int64          { return m.counters }
 
 func doUpdateRequest(h *MetricsHandler, mType, mName, mValue string) *httptest.ResponseRecorder {
-	mux := NewRouter(h)
+	mux := NewRouter(h, zap.NewNop())
 	req := httptest.NewRequest(http.MethodPost, "/update/"+mType+"/"+mName+"/"+mValue, nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -78,7 +80,7 @@ func TestMetricsHandler_Update_StoresValue(t *testing.T) {
 
 func TestMetricsHandler_Update_WrongMethod(t *testing.T) {
 	h := NewMetricsHandler(newMockStorage())
-	mux := NewRouter(h)
+	mux := NewRouter(h, zap.NewNop())
 
 	req := httptest.NewRequest(http.MethodGet, "/update/gauge/Alloc/1", nil)
 	rec := httptest.NewRecorder()
