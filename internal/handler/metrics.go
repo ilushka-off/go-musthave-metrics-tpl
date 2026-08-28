@@ -2,8 +2,10 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	models "github.com/ilushka-off/go-musthave-metrics-tpl/internal/model"
@@ -74,6 +76,23 @@ func (h *MetricsHandler) Value(w http.ResponseWriter, r *http.Request) {
 	default:
 		w.WriteHeader(http.StatusNotFound)
 	}
+}
+
+func (h *MetricsHandler) Index(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html")
+
+	var b strings.Builder
+
+	for name, value := range h.storage.AllGauges() {
+		b.WriteString(fmt.Sprintf("<p>%s: %f</p>", name, value))
+	}
+
+	for name, value := range h.storage.AllCounters() {
+		b.WriteString(fmt.Sprintf("<p>%s: %d</p>", name, value))
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(b.String()))
 }
 
 func (h *MetricsHandler) UpdateJSON(w http.ResponseWriter, r *http.Request) {
