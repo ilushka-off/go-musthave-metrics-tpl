@@ -1,8 +1,9 @@
 package agent
 
 import (
-	"fmt"
 	"time"
+
+	models "github.com/ilushka-off/go-musthave-metrics-tpl/internal/model"
 )
 
 type Agent struct {
@@ -45,11 +46,31 @@ func (a *Agent) poll() {
 }
 
 func (a *Agent) report() {
+
 	for name, value := range a.gauges {
-		sendMetrics(a.serverAddress, "gauge", name, fmt.Sprintf("%f", value))
+
+		modelGauge := models.Metrics{
+			ID:    name,
+			MType: models.Gauge,
+			Value: &value,
+		}
+
+		err := sendMetricsJSON(a.serverAddress, modelGauge)
+		if err != nil {
+			return
+		}
 	}
 
-	sendMetrics(a.serverAddress, "counter", "PollCount", fmt.Sprintf("%v", a.pollCount))
+	modelCounter := models.Metrics{
+		ID:    "PollCount",
+		MType: models.Counter,
+		Delta: new(a.pollCount),
+	}
+
+	err := sendMetricsJSON(a.serverAddress, modelCounter)
+	if err != nil {
+		return
+	}
 
 	a.pollCount = 0
 }
