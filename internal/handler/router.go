@@ -7,12 +7,13 @@ import (
 	"go.uber.org/zap"
 )
 
-func NewRouter(h *MetricsHandler, log *zap.Logger) chi.Router {
+func NewRouter(h *MetricsHandler, log *zap.Logger, p *PingHandler) chi.Router {
 	r := chi.NewRouter()
 	r.Use(chimw.StripSlashes)
 	r.Use(middleware.Logger(log))
 	r.Use(middleware.GzipDecompress())
 	r.Use(middleware.GzipCompress())
+	r.Get("/ping", p.Ping)
 	r.Post("/update/{type}/{name}/{value}", h.Update)
 	r.Post("/update", h.UpdateJSON)
 	r.Get("/value/{type}/{name}", h.Value)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"flag"
 	"log"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/handler"
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/repository"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"go.uber.org/zap"
 )
 
@@ -19,6 +21,7 @@ func main() {
 	storeInterval := flag.Int("i", 300, "Store interval in seconds")
 	filePath := flag.String("f", "metrics.json", "File path to store metrics")
 	restore := flag.Bool("r", false, "Restore metrics from file, if true")
+	databaseDsn := flag.String("d", "", "Database DSN")
 	flag.Parse()
 
 	if envAddr := os.Getenv("ADDRESS"); envAddr != "" {
@@ -43,6 +46,10 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
+	}
+
+	if envDatabaseDsn := os.Getenv("DATABASE_DSN"); envDatabaseDsn != "" {
+		*databaseDsn = envDatabaseDsn
 	}
 
 	logger, err := zap.NewProduction()
@@ -80,7 +87,14 @@ func main() {
 	}
 
 	h := handler.NewMetricsHandler(storage)
-	router := handler.NewRouter(h, logger)
+	db, err := sql.Open("pgx", *databaseDsn)
+	if err != nil {
+		logger.Fatal("Failed to connect to database", zap.Error(err))
+	}
+	defer db.Close()
+
+	database := handler.NewPingHandler(db)
+	router := handler.NewRouter(h, logger, database)
 	if err := http.ListenAndServe(*addr, router); err != nil {
 		log.Fatal(err)
 	}
