@@ -39,14 +39,20 @@ func (h *MetricsHandler) Update(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		h.storage.UpdateGauge(metricsName, value)
+		if err := h.storage.UpdateGauge(metricsName, value); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 	case models.Counter:
 		value, err := strconv.ParseInt(metricsValue, 10, 64)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		h.storage.UpdateCounter(metricsName, value)
+		if err := h.storage.UpdateCounter(metricsName, value); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 	default:
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -114,13 +120,19 @@ func (h *MetricsHandler) UpdateJSON(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		h.storage.UpdateGauge(model.ID, *model.Value)
+		if err := h.storage.UpdateGauge(model.ID, *model.Value); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 	case models.Counter:
 		if model.Delta == nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		h.storage.UpdateCounter(model.ID, *model.Delta)
+		if err := h.storage.UpdateCounter(model.ID, *model.Delta); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 		if total, ok := h.storage.Counter(model.ID); ok {
 			model.Delta = &total
 		}
@@ -128,8 +140,14 @@ func (h *MetricsHandler) UpdateJSON(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+
+	data, err := json.Marshal(model)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(model)
+	w.Write(data)
 }
 
 func (h *MetricsHandler) ValueJSON(w http.ResponseWriter, r *http.Request) {
@@ -146,14 +164,14 @@ func (h *MetricsHandler) ValueJSON(w http.ResponseWriter, r *http.Request) {
 	switch model.MType {
 	case models.Gauge:
 		value, ok := h.storage.Gauge(model.ID)
-		if ok == false {
+		if !ok {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 		model.Value = &value
 	case models.Counter:
 		value, ok := h.storage.Counter(model.ID)
-		if ok == false {
+		if !ok {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
@@ -162,6 +180,12 @@ func (h *MetricsHandler) ValueJSON(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
+
+	data, err := json.Marshal(model)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(model)
+	w.Write(data)
 }

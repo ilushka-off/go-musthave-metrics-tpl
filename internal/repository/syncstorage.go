@@ -12,12 +12,16 @@ func NewSyncStorage(storage Storage, path string) *SyncStorage {
 	}
 }
 
-func (s *SyncStorage) UpdateGauge(name string, value float64) {
-	s.Storage.UpdateGauge(name, value)
-	SaveToFile(s.Storage, s.path)
+func (s *SyncStorage) UpdateGauge(name string, value float64) error {
+	if err := s.Storage.UpdateGauge(name, value); err != nil {
+		return err
+	}
+	return SaveToFile(s.Storage, s.path)
 }
 
-func (s *SyncStorage) UpdateCounter(name string, value int64) {
-	s.Storage.UpdateCounter(name, value)
-	SaveToFile(s.Storage, s.path)
+func (s *SyncStorage) UpdateCounter(name string, value int64) error {
+	if err := s.Storage.UpdateCounter(name, value); err != nil {
+		return err
+	}
+	return SaveToFile(s.Storage, s.path)
 }

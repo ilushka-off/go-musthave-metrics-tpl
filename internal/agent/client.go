@@ -2,46 +2,51 @@ package agent
 
 import (
 	"bytes"
-	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 
+	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/compress"
 	models "github.com/ilushka-off/go-musthave-metrics-tpl/internal/model"
 )
 
 func sendMetrics(serverAddress, mType, name, value string) error {
-	url := fmt.Sprintf("%s/update/%s/%s/%s", serverAddress, mType, name, value)
+	reqURL, err := url.JoinPath(serverAddress, "update", mType, name, value)
+	if err != nil {
+		return err
+	}
 
-	resp, err := http.Post(url, "text/plain", nil)
+	resp, err := http.Post(reqURL, "text/plain", nil)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code %d for %s", resp.StatusCode, url)
+		return fmt.Errorf("unexpected status code %d for %s", resp.StatusCode, reqURL)
 	}
 
 	return nil
 }
 
 func sendMetricsJSON(serverAddress string, metrics models.Metrics) error {
-	var buf bytes.Buffer
-
 	data, err := json.Marshal(metrics)
 	if err != nil {
 		return err
 	}
 
-	gz := gzip.NewWriter(&buf)
-	if _, err := gz.Write(data); err != nil {
+	gzData, err := compress.Compress(data)
+	if err != nil {
 		return err
 	}
-	gz.Close()
 
-	serverAddress = fmt.Sprintf("%s/update", serverAddress)
-	req, err := http.NewRequest("POST", serverAddress, &buf)
+	reqURL, err := url.JoinPath(serverAddress, "update")
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest("POST", reqURL, bytes.NewReader(gzData))
 	if err != nil {
 		return err
 	}
@@ -56,7 +61,7 @@ func sendMetricsJSON(serverAddress string, metrics models.Metrics) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code %d for %s", resp.StatusCode, serverAddress)
+		return fmt.Errorf("unexpected status code %d for %s", resp.StatusCode, reqURL)
 	}
 
 	return nil

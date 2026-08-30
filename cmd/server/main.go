@@ -21,11 +21,11 @@ func main() {
 	restore := flag.Bool("r", false, "Restore metrics from file, if true")
 	flag.Parse()
 
-	if envAddr := os.Getenv("ADDRESS"); envAddr != "" {
+	if envAddr, _ := os.LookupEnv("ADDRESS"); envAddr != "" {
 		*addr = envAddr
 	}
 
-	if envStoreInterval := os.Getenv("STORE_INTERVAL"); envStoreInterval != "" {
+	if envStoreInterval, _ := os.LookupEnv("STORE_INTERVAL"); envStoreInterval != "" {
 		var err error
 		*storeInterval, err = strconv.Atoi(envStoreInterval)
 		if err != nil {
@@ -33,11 +33,11 @@ func main() {
 		}
 	}
 
-	if envFilePath := os.Getenv("FILE_STORAGE_PATH"); envFilePath != "" {
+	if envFilePath, _ := os.LookupEnv("FILE_STORAGE_PATH"); envFilePath != "" {
 		*filePath = envFilePath
 	}
 
-	if envRestore := os.Getenv("RESTORE"); envRestore != "" {
+	if envRestore, _ := os.LookupEnv("RESTORE"); envRestore != "" {
 		var err error
 		*restore, err = strconv.ParseBool(envRestore)
 		if err != nil {
@@ -52,13 +52,9 @@ func main() {
 
 	defer logger.Sync()
 
-	var storage repository.Storage = repository.NewMemStorage()
-
-	if *restore == true {
-		err := repository.LoadFromFile(storage, *filePath)
-		if err != nil {
-			logger.Error("Failed to restore metrics from file", zap.Error(err))
-		}
+	storage, err := repository.NewFileStorage(*filePath, *restore)
+	if err != nil {
+		logger.Error("Failed to restore metrics from file", zap.Error(err))
 	}
 
 	if *storeInterval > 0 {
@@ -73,9 +69,7 @@ func main() {
 			}
 
 		}()
-	}
-
-	if *storeInterval == 0 {
+	} else {
 		storage = repository.NewSyncStorage(storage, *filePath)
 	}
 
