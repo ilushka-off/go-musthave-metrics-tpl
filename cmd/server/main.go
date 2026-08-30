@@ -21,11 +21,11 @@ func main() {
 	restore := flag.Bool("r", false, "Restore metrics from file, if true")
 	flag.Parse()
 
-	if envAddr, _ := os.LookupEnv("ADDRESS"); envAddr != "" {
+	if envAddr, ok := os.LookupEnv("ADDRESS"); ok {
 		*addr = envAddr
 	}
 
-	if envStoreInterval, _ := os.LookupEnv("STORE_INTERVAL"); envStoreInterval != "" {
+	if envStoreInterval, ok := os.LookupEnv("STORE_INTERVAL"); ok {
 		var err error
 		*storeInterval, err = strconv.Atoi(envStoreInterval)
 		if err != nil {
@@ -33,11 +33,11 @@ func main() {
 		}
 	}
 
-	if envFilePath, _ := os.LookupEnv("FILE_STORAGE_PATH"); envFilePath != "" {
+	if envFilePath, ok := os.LookupEnv("FILE_STORAGE_PATH"); ok {
 		*filePath = envFilePath
 	}
 
-	if envRestore, _ := os.LookupEnv("RESTORE"); envRestore != "" {
+	if envRestore, ok := os.LookupEnv("RESTORE"); ok {
 		var err error
 		*restore, err = strconv.ParseBool(envRestore)
 		if err != nil {
@@ -73,7 +73,7 @@ func main() {
 		storage = repository.NewSyncStorage(storage, *filePath)
 	}
 
-	h := handler.NewMetricsHandler(storage)
+	h := handler.NewMetricsHandler(storage, logger)
 	router := handler.NewRouter(h, logger)
 	if err := http.ListenAndServe(*addr, router); err != nil {
 		log.Fatal(err)

@@ -10,14 +10,16 @@ import (
 	"github.com/go-chi/chi/v5"
 	models "github.com/ilushka-off/go-musthave-metrics-tpl/internal/model"
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/repository"
+	"go.uber.org/zap"
 )
 
 type MetricsHandler struct {
 	storage repository.Storage
+	log     *zap.Logger
 }
 
-func NewMetricsHandler(s repository.Storage) *MetricsHandler {
-	return &MetricsHandler{storage: s}
+func NewMetricsHandler(s repository.Storage, log *zap.Logger) *MetricsHandler {
+	return &MetricsHandler{storage: s, log: log}
 }
 
 func (h *MetricsHandler) Update(w http.ResponseWriter, r *http.Request) {
@@ -40,6 +42,7 @@ func (h *MetricsHandler) Update(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := h.storage.UpdateGauge(metricsName, value); err != nil {
+			h.log.Error("failed to update gauge", zap.Error(err))
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -50,6 +53,7 @@ func (h *MetricsHandler) Update(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := h.storage.UpdateCounter(metricsName, value); err != nil {
+			h.log.Error("failed to update counter", zap.Error(err))
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -121,6 +125,7 @@ func (h *MetricsHandler) UpdateJSON(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := h.storage.UpdateGauge(model.ID, *model.Value); err != nil {
+			h.log.Error("failed to update gauge", zap.Error(err))
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -130,6 +135,7 @@ func (h *MetricsHandler) UpdateJSON(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := h.storage.UpdateCounter(model.ID, *model.Delta); err != nil {
+			h.log.Error("failed to update counter", zap.Error(err))
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -143,6 +149,7 @@ func (h *MetricsHandler) UpdateJSON(w http.ResponseWriter, r *http.Request) {
 
 	data, err := json.Marshal(model)
 	if err != nil {
+		h.log.Error("failed to marshal metric", zap.Error(err))
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -183,6 +190,7 @@ func (h *MetricsHandler) ValueJSON(w http.ResponseWriter, r *http.Request) {
 
 	data, err := json.Marshal(model)
 	if err != nil {
+		h.log.Error("failed to marshal metric", zap.Error(err))
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}

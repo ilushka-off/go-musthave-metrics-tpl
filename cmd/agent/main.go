@@ -17,11 +17,11 @@ func main() {
 	pollInterval := flag.Int("p", 2, "Poll interval in seconds")
 	flag.Parse()
 
-	if envAddr, _ := os.LookupEnv("ADDRESS"); envAddr != "" {
+	if envAddr, ok := os.LookupEnv("ADDRESS"); ok {
 		*addr = envAddr
 	}
 
-	if envReportInterval, _ := os.LookupEnv("REPORT_INTERVAL"); envReportInterval != "" {
+	if envReportInterval, ok := os.LookupEnv("REPORT_INTERVAL"); ok {
 		var err error
 		*reportInterval, err = strconv.Atoi(envReportInterval)
 
@@ -31,7 +31,7 @@ func main() {
 
 	}
 
-	if envPollInterval, _ := os.LookupEnv("POLL_INTERVAL"); envPollInterval != "" {
+	if envPollInterval, ok := os.LookupEnv("POLL_INTERVAL"); ok {
 		var err error
 
 		*pollInterval, err = strconv.Atoi(envPollInterval)
