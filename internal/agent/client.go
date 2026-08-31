@@ -2,48 +2,53 @@ package agent
 
 import (
 	"bytes"
-	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 
+	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/compress"
 	models "github.com/ilushka-off/go-musthave-metrics-tpl/internal/model"
 )
 
 func sendMetrics(serverAddress, mType, name, value string) error {
-	url := fmt.Sprintf("%s/update/%s/%s/%s", serverAddress, mType, name, value)
-
-	resp, err := http.Post(url, "text/plain", nil)
+	reqURL, err := url.JoinPath(serverAddress, "update", mType, name, value)
 	if err != nil {
-		return err
+		return fmt.Errorf("build request url: %w", err)
+	}
+
+	resp, err := http.Post(reqURL, "text/plain", nil)
+	if err != nil {
+		return fmt.Errorf("post metric: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code %d for %s", resp.StatusCode, url)
+		return fmt.Errorf("unexpected status code %d for %s", resp.StatusCode, reqURL)
 	}
 
 	return nil
 }
 
 func sendMetricsJSON(serverAddress string, metrics models.Metrics) error {
-	var buf bytes.Buffer
-
 	data, err := json.Marshal(metrics)
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal metrics: %w", err)
 	}
 
-	gz := gzip.NewWriter(&buf)
-	if _, err := gz.Write(data); err != nil {
-		return err
-	}
-	gz.Close()
-
-	serverAddress = fmt.Sprintf("%s/update", serverAddress)
-	req, err := http.NewRequest("POST", serverAddress, &buf)
+	gzData, err := compress.Compress(data)
 	if err != nil {
-		return err
+		return fmt.Errorf("compress metrics: %w", err)
+	}
+
+	reqURL, err := url.JoinPath(serverAddress, "update")
+	if err != nil {
+		return fmt.Errorf("build request url: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", reqURL, bytes.NewReader(gzData))
+	if err != nil {
+		return fmt.Errorf("build request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -51,12 +56,12 @@ func sendMetricsJSON(serverAddress string, metrics models.Metrics) error {
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("post metrics: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code %d for %s", resp.StatusCode, serverAddress)
+		return fmt.Errorf("unexpected status code %d for %s", resp.StatusCode, reqURL)
 	}
 
 	return nil

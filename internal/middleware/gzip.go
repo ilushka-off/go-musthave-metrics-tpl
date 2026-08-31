@@ -4,6 +4,8 @@ import (
 	"compress/gzip"
 	"net/http"
 	"strings"
+
+	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/compress"
 )
 
 type gzipResponseWriter struct {
@@ -15,7 +17,7 @@ func GzipDecompress() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Header.Get("Content-Encoding") == "gzip" {
-				gzReader, err := gzip.NewReader(r.Body)
+				gzReader, err := compress.NewReader(r.Body)
 				if err != nil {
 					w.WriteHeader(http.StatusBadRequest)
 					return

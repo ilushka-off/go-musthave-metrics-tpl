@@ -16,6 +16,7 @@ func NewRouter(h *MetricsHandler, log *zap.Logger) chi.Router {
 	r.Post("/update/{type}/{name}/{value}", h.Update)
 	r.Post("/update", h.UpdateJSON)
 	r.Get("/value/{type}/{name}", h.Value)
+	r.Get("/", h.Index)
 	r.Post("/value", h.ValueJSON)
 	return r
 }
