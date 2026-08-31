@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 
@@ -73,5 +74,75 @@ func (h *MetricsHandler) Value(w http.ResponseWriter, r *http.Request) {
 	default:
 		w.WriteHeader(http.StatusNotFound)
 	}
+}
 
+func (h *MetricsHandler) UpdateJSON(w http.ResponseWriter, r *http.Request) {
+
+	w.Header().Set("Content-Type", "application/json")
+
+	model := models.Metrics{}
+
+	err := json.NewDecoder(r.Body).Decode(&model)
+
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	switch model.MType {
+	case models.Gauge:
+		if model.Value == nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		h.storage.UpdateGauge(model.ID, *model.Value)
+	case models.Counter:
+		if model.Delta == nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		h.storage.UpdateCounter(model.ID, *model.Delta)
+		if total, ok := h.storage.Counter(model.ID); ok {
+			model.Delta = &total
+		}
+	default:
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(model)
+}
+
+func (h *MetricsHandler) ValueJSON(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	model := models.Metrics{}
+
+	err := json.NewDecoder(r.Body).Decode(&model)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	switch model.MType {
+	case models.Gauge:
+		value, ok := h.storage.Gauge(model.ID)
+		if ok == false {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		model.Value = &value
+	case models.Counter:
+		value, ok := h.storage.Counter(model.ID)
+		if ok == false {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		model.Delta = &value
+	default:
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(model)
 }
