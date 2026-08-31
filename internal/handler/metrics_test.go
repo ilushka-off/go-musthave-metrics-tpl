@@ -5,31 +5,46 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"go.uber.org/mock/gomock"
 	"go.uber.org/zap"
+
+	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/repository/mocks"
 )
 
-// mockStorage — простая реализация repository.Storage для теста хендлера в изоляции от MemStorage.
-type mockStorage struct {
-	gauges   map[string]float64
-	counters map[string]int64
-}
+// newMockStorage возвращает сгенерированный mockgen'ом MockStorage,
+// подключённый к простым in-memory картам для проверки сохранённых значений в тестах.
+func newMockStorage(t *testing.T) *mocks.MockStorage {
+	ctrl := gomock.NewController(t)
+	storage := mocks.NewMockStorage(ctrl)
 
-func newMockStorage() *mockStorage {
-	return &mockStorage{
-		gauges:   make(map[string]float64),
-		counters: make(map[string]int64),
-	}
-}
+	gauges := make(map[string]float64)
+	counters := make(map[string]int64)
 
-func (m *mockStorage) UpdateGauge(name string, value float64) { m.gauges[name] = value }
-func (m *mockStorage) UpdateCounter(name string, value int64) { m.counters[name] += value }
-func (m *mockStorage) Gauge(name string) (float64, bool)      { v, ok := m.gauges[name]; return v, ok }
-func (m *mockStorage) Counter(name string) (int64, bool)      { v, ok := m.counters[name]; return v, ok }
-func (m *mockStorage) AllGauges() map[string]float64          { return m.gauges }
-func (m *mockStorage) AllCounters() map[string]int64          { return m.counters }
+	storage.EXPECT().UpdateGauge(gomock.Any(), gomock.Any()).DoAndReturn(func(name string, value float64) error {
+		gauges[name] = value
+		return nil
+	}).AnyTimes()
+
+	storage.EXPECT().UpdateCounter(gomock.Any(), gomock.Any()).DoAndReturn(func(name string, value int64) error {
+		counters[name] += value
+		return nil
+	}).AnyTimes()
+
+	storage.EXPECT().Gauge(gomock.Any()).DoAndReturn(func(name string) (float64, bool) {
+		v, ok := gauges[name]
+		return v, ok
+	}).AnyTimes()
+
+	storage.EXPECT().Counter(gomock.Any()).DoAndReturn(func(name string) (int64, bool) {
+		v, ok := counters[name]
+		return v, ok
+	}).AnyTimes()
+
+	return storage
+}
 
 func doUpdateRequest(h *MetricsHandler, mType, mName, mValue string) *httptest.ResponseRecorder {
-	mux := NewRouter(h, zap.NewNop())
+	mux := NewRouter(h, zap.NewNop(), nil)
 	req := httptest.NewRequest(http.MethodPost, "/update/"+mType+"/"+mName+"/"+mValue, nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -53,7 +68,7 @@ func TestMetricsHandler_Update(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h := NewMetricsHandler(newMockStorage())
+			h := NewMetricsHandler(newMockStorage(t), zap.NewNop())
 			rec := doUpdateRequest(h, tt.mType, tt.mName, tt.mValue)
 			if rec.Code != tt.wantStatus {
 				t.Fatalf("status = %d; want %d", rec.Code, tt.wantStatus)
@@ -63,8 +78,8 @@ func TestMetricsHandler_Update(t *testing.T) {
 }
 
 func TestMetricsHandler_Update_StoresValue(t *testing.T) {
-	storage := newMockStorage()
-	h := NewMetricsHandler(storage)
+	storage := newMockStorage(t)
+	h := NewMetricsHandler(storage, zap.NewNop())
 
 	doUpdateRequest(h, "gauge", "Alloc", "123.45")
 	if v, ok := storage.Gauge("Alloc"); !ok || v != 123.45 {
@@ -79,8 +94,8 @@ func TestMetricsHandler_Update_StoresValue(t *testing.T) {
 }
 
 func TestMetricsHandler_Update_WrongMethod(t *testing.T) {
-	h := NewMetricsHandler(newMockStorage())
-	mux := NewRouter(h, zap.NewNop())
+	h := NewMetricsHandler(newMockStorage(t), zap.NewNop())
+	mux := NewRouter(h, zap.NewNop(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/update/gauge/Alloc/1", nil)
 	rec := httptest.NewRecorder()

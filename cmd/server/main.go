@@ -24,11 +24,11 @@ func main() {
 	databaseDsn := flag.String("d", "", "Database DSN")
 	flag.Parse()
 
-	if envAddr := os.Getenv("ADDRESS"); envAddr != "" {
+	if envAddr, ok := os.LookupEnv("ADDRESS"); ok {
 		*addr = envAddr
 	}
 
-	if envStoreInterval := os.Getenv("STORE_INTERVAL"); envStoreInterval != "" {
+	if envStoreInterval, ok := os.LookupEnv("STORE_INTERVAL"); ok {
 		var err error
 		*storeInterval, err = strconv.Atoi(envStoreInterval)
 		if err != nil {
@@ -36,11 +36,11 @@ func main() {
 		}
 	}
 
-	if envFilePath := os.Getenv("FILE_STORAGE_PATH"); envFilePath != "" {
+	if envFilePath, ok := os.LookupEnv("FILE_STORAGE_PATH"); ok {
 		*filePath = envFilePath
 	}
 
-	if envRestore := os.Getenv("RESTORE"); envRestore != "" {
+	if envRestore, ok := os.LookupEnv("RESTORE"); ok {
 		var err error
 		*restore, err = strconv.ParseBool(envRestore)
 		if err != nil {
@@ -59,13 +59,9 @@ func main() {
 
 	defer logger.Sync()
 
-	var storage repository.Storage = repository.NewMemStorage()
-
-	if *restore == true {
-		err := repository.LoadFromFile(storage, *filePath)
-		if err != nil {
-			logger.Error("Failed to restore metrics from file", zap.Error(err))
-		}
+	storage, err := repository.NewFileStorage(*filePath, *restore)
+	if err != nil {
+		logger.Error("Failed to restore metrics from file", zap.Error(err))
 	}
 
 	if *storeInterval > 0 {
@@ -80,13 +76,11 @@ func main() {
 			}
 
 		}()
-	}
-
-	if *storeInterval == 0 {
+	} else {
 		storage = repository.NewSyncStorage(storage, *filePath)
 	}
 
-	h := handler.NewMetricsHandler(storage)
+	h := handler.NewMetricsHandler(storage, logger)
 	db, err := sql.Open("pgx", *databaseDsn)
 	if err != nil {
 		logger.Fatal("Failed to connect to database", zap.Error(err))

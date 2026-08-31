@@ -3,9 +3,20 @@ package repository
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 
 	models "github.com/ilushka-off/go-musthave-metrics-tpl/internal/model"
 )
+
+func NewFileStorage(path string, restore bool) (Storage, error) {
+	storage := NewMemStorage()
+
+	if !restore {
+		return storage, nil
+	}
+
+	return storage, LoadFromFile(storage, path)
+}
 
 func SaveToFile(storage Storage, path string) error {
 	metrics := []models.Metrics{}
@@ -31,7 +42,24 @@ func SaveToFile(storage Storage, path string) error {
 		return err
 	}
 
-	return os.WriteFile(path, data, 0644)
+	tmpFile, err := os.CreateTemp(filepath.Dir(path), "*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmpFile.Name()
+
+	if _, err := tmpFile.Write(data); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpPath)
+		return err
+	}
+
+	if err := tmpFile.Close(); err != nil {
+		os.Remove(tmpPath)
+		return err
+	}
+
+	return os.Rename(tmpPath, path)
 }
 
 func LoadFromFile(storage Storage, path string) error {
@@ -50,11 +78,15 @@ func LoadFromFile(storage Storage, path string) error {
 		switch m.MType {
 		case models.Gauge:
 			if m.Value != nil {
-				storage.UpdateGauge(m.ID, *m.Value)
+				if err := storage.UpdateGauge(m.ID, *m.Value); err != nil {
+					return err
+				}
 			}
 		case models.Counter:
 			if m.Delta != nil {
-				storage.UpdateCounter(m.ID, *m.Delta)
+				if err := storage.UpdateCounter(m.ID, *m.Delta); err != nil {
+					return err
+				}
 			}
 		}
 	}
