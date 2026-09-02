@@ -2,13 +2,55 @@ package repository
 
 import (
 	"database/sql"
+	"errors"
+	"fmt"
 	"os"
 	"testing"
 
 	models "github.com/ilushka-off/go-musthave-metrics-tpl/internal/model"
+	"github.com/jackc/pgerrcode"
+	"github.com/jackc/pgx/v5/pgconn"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"go.uber.org/zap"
 )
+
+func TestIsPgConnRetriable_TrueForClass08Codes(t *testing.T) {
+	class08Codes := []string{
+		pgerrcode.ConnectionException,
+		pgerrcode.ConnectionDoesNotExist,
+		pgerrcode.ConnectionFailure,
+		pgerrcode.SQLClientUnableToEstablishSQLConnection,
+		pgerrcode.SQLServerRejectedEstablishmentOfSQLConnection,
+		pgerrcode.TransactionResolutionUnknown,
+		pgerrcode.ProtocolViolation,
+	}
+
+	for _, code := range class08Codes {
+		t.Run(code, func(t *testing.T) {
+			err := fmt.Errorf("wrapped: %w", &pgconn.PgError{Code: code})
+			if !isPgConnRetriable(err) {
+				t.Fatalf("isPgConnRetriable(code=%s) = false, want true", code)
+			}
+		})
+	}
+}
+
+func TestIsPgConnRetriable_FalseForOtherCodes(t *testing.T) {
+	// UniqueViolation — тот самый пример из задания: класс 23, не 08, повторять не нужно.
+	err := &pgconn.PgError{Code: pgerrcode.UniqueViolation}
+	if isPgConnRetriable(err) {
+		t.Fatalf("isPgConnRetriable(UniqueViolation) = true, want false")
+	}
+}
+
+func TestIsPgConnRetriable_FalseForNonPgError(t *testing.T) {
+	if isPgConnRetriable(errors.New("plain error")) {
+		t.Fatal("expected false for a non-pgconn.PgError error")
+	}
+	if isPgConnRetriable(nil) {
+		t.Fatal("expected false for nil error")
+	}
+}
 
 func newTestPostgresStorage(t *testing.T) *PostgresStorage {
 	dsn := os.Getenv("DATABASE_DSN")

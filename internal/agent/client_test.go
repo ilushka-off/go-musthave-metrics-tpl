@@ -2,6 +2,8 @@ package agent
 
 import (
 	"encoding/json"
+	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -98,5 +100,27 @@ func TestSendMetricsBatch(t *testing.T) {
 func TestSendMetricsBatch_ConnectionError(t *testing.T) {
 	if err := sendMetricsBatch("http://127.0.0.1:0", []models.Metrics{{ID: "Foo", MType: models.Gauge}}); err == nil {
 		t.Fatal("expected error for unreachable server, got nil")
+	}
+}
+
+func TestIsConnRetriable_TrueForDialFailure(t *testing.T) {
+	_, err := net.Dial("tcp", "127.0.0.1:1") // порт 1 закрыт — connection refused
+	if err == nil {
+		t.Fatal("expected dial error, got nil")
+	}
+	if !isConnRetriable(err) {
+		t.Fatalf("expected isConnRetriable=true for dial failure, err=%v", err)
+	}
+}
+
+func TestIsConnRetriable_FalseForUnrelatedError(t *testing.T) {
+	if isConnRetriable(errors.New("unexpected status code 500")) {
+		t.Fatal("expected isConnRetriable=false for a plain non-network error")
+	}
+}
+
+func TestIsConnRetriable_FalseForNil(t *testing.T) {
+	if isConnRetriable(nil) {
+		t.Fatal("expected isConnRetriable=false for nil error")
 	}
 }

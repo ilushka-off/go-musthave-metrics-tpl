@@ -3,12 +3,15 @@ package agent
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/compress"
 	models "github.com/ilushka-off/go-musthave-metrics-tpl/internal/model"
+	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/retry"
 )
 
 func sendMetrics(serverAddress, mType, name, value string) error {
@@ -17,17 +20,19 @@ func sendMetrics(serverAddress, mType, name, value string) error {
 		return fmt.Errorf("build request url: %w", err)
 	}
 
-	resp, err := http.Post(reqURL, "text/plain", nil)
-	if err != nil {
-		return fmt.Errorf("post metric: %w", err)
-	}
-	defer resp.Body.Close()
+	return retry.Do(retry.Delays, isConnRetriable, func() error {
+		resp, err := http.Post(reqURL, "text/plain", nil)
+		if err != nil {
+			return fmt.Errorf("post metric: %w", err)
+		}
+		defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code %d for %s", resp.StatusCode, reqURL)
-	}
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("unexpected status code %d for %s", resp.StatusCode, reqURL)
+		}
 
-	return nil
+		return nil
+	})
 }
 
 func sendMetricsJSON(serverAddress string, metrics models.Metrics) error {
@@ -46,25 +51,27 @@ func sendMetricsJSON(serverAddress string, metrics models.Metrics) error {
 		return fmt.Errorf("build request url: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", reqURL, bytes.NewReader(gzData))
-	if err != nil {
-		return fmt.Errorf("build request: %w", err)
-	}
+	return retry.Do(retry.Delays, isConnRetriable, func() error {
+		req, err := http.NewRequest("POST", reqURL, bytes.NewReader(gzData))
+		if err != nil {
+			return fmt.Errorf("build request: %w", err)
+		}
 
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Content-Encoding", "gzip")
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Encoding", "gzip")
 
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("post metrics: %w", err)
-	}
-	defer resp.Body.Close()
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("post metrics: %w", err)
+		}
+		defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code %d for %s", resp.StatusCode, reqURL)
-	}
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("unexpected status code %d for %s", resp.StatusCode, reqURL)
+		}
 
-	return nil
+		return nil
+	})
 }
 
 func sendMetricsBatch(serverAddress string, metrics []models.Metrics) error {
@@ -80,19 +87,28 @@ func sendMetricsBatch(serverAddress string, metrics []models.Metrics) error {
 	if err != nil {
 		return fmt.Errorf("build request url: %w", err)
 	}
-	req, err := http.NewRequest("POST", reqURL, bytes.NewReader(gzData))
-	if err != nil {
-		return fmt.Errorf("build request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Content-Encoding", "gzip")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("post metrics: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code %d for %s", resp.StatusCode, reqURL)
-	}
-	return nil
+
+	return retry.Do(retry.Delays, isConnRetriable, func() error {
+		req, err := http.NewRequest("POST", reqURL, bytes.NewReader(gzData))
+		if err != nil {
+			return fmt.Errorf("build request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Encoding", "gzip")
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("post metrics: %w", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("unexpected status code %d for %s", resp.StatusCode, reqURL)
+		}
+		return nil
+	})
+}
+
+func isConnRetriable(err error) bool {
+	_, ok := errors.AsType[*net.OpError](err)
+	return ok
 }
