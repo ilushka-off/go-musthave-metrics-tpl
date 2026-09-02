@@ -19,5 +19,6 @@ func NewRouter(h *MetricsHandler, log *zap.Logger, p *PingHandler) chi.Router {
 	r.Get("/value/{type}/{name}", h.Value)
 	r.Get("/", h.Index)
 	r.Post("/value", h.ValueJSON)
+	r.Post("/updates", h.UpdateBatch)
 	return r
 }
