@@ -3,11 +3,13 @@ package handler
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"go.uber.org/mock/gomock"
 	"go.uber.org/zap"
 
+	models "github.com/ilushka-off/go-musthave-metrics-tpl/internal/model"
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/repository/mocks"
 )
 
@@ -40,7 +42,32 @@ func newMockStorage(t *testing.T) *mocks.MockStorage {
 		return v, ok
 	}).AnyTimes()
 
+	storage.EXPECT().UpdateBatch(gomock.Any()).DoAndReturn(func(metrics []models.Metrics) error {
+		for _, m := range metrics {
+			switch m.MType {
+			case models.Gauge:
+				if m.Value != nil {
+					gauges[m.ID] = *m.Value
+				}
+			case models.Counter:
+				if m.Delta != nil {
+					counters[m.ID] += *m.Delta
+				}
+			}
+		}
+		return nil
+	}).AnyTimes()
+
 	return storage
+}
+
+func doUpdateBatchRequest(h *MetricsHandler, body string) *httptest.ResponseRecorder {
+	mux := NewRouter(h, zap.NewNop(), nil)
+	req := httptest.NewRequest(http.MethodPost, "/updates", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	return rec
 }
 
 func doUpdateRequest(h *MetricsHandler, mType, mName, mValue string) *httptest.ResponseRecorder {
@@ -103,5 +130,46 @@ func TestMetricsHandler_Update_WrongMethod(t *testing.T) {
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("status = %d; want %d", rec.Code, http.StatusMethodNotAllowed)
+	}
+}
+
+func TestMetricsHandler_UpdateBatch_StoresValues(t *testing.T) {
+	storage := newMockStorage(t)
+	h := NewMetricsHandler(storage, zap.NewNop())
+
+	body := `[
+		{"id":"Alloc","type":"gauge","value":123.45},
+		{"id":"PollCount","type":"counter","delta":1},
+		{"id":"PollCount","type":"counter","delta":2}
+	]`
+
+	rec := doUpdateBatchRequest(h, body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d; want %d", rec.Code, http.StatusOK)
+	}
+
+	if v, ok := storage.Gauge("Alloc"); !ok || v != 123.45 {
+		t.Fatalf("Gauge(Alloc) = %v, %v; want 123.45, true", v, ok)
+	}
+	if v, ok := storage.Counter("PollCount"); !ok || v != 3 {
+		t.Fatalf("Counter(PollCount) = %v, %v; want 3, true", v, ok)
+	}
+}
+
+func TestMetricsHandler_UpdateBatch_Empty(t *testing.T) {
+	h := NewMetricsHandler(newMockStorage(t), zap.NewNop())
+
+	rec := doUpdateBatchRequest(h, `[]`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d; want %d", rec.Code, http.StatusOK)
+	}
+}
+
+func TestMetricsHandler_UpdateBatch_InvalidJSON(t *testing.T) {
+	h := NewMetricsHandler(newMockStorage(t), zap.NewNop())
+
+	rec := doUpdateBatchRequest(h, `not-json`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d; want %d", rec.Code, http.StatusBadRequest)
 	}
 }
