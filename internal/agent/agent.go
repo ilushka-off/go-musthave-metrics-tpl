@@ -47,27 +47,27 @@ func (a *Agent) poll() {
 
 func (a *Agent) report() {
 
-	for name, value := range a.gauges {
+	metrics := make([]models.Metrics, 0, len(a.gauges)+1)
 
-		modelGauge := models.Metrics{
+	for name, value := range a.gauges {
+		metrics = append(metrics, models.Metrics{
 			ID:    name,
 			MType: models.Gauge,
 			Value: &value,
-		}
-
-		err := sendMetricsJSON(a.serverAddress, modelGauge)
-		if err != nil {
-			return
-		}
+		})
 	}
 
-	modelCounter := models.Metrics{
+	metrics = append(metrics, models.Metrics{
 		ID:    "PollCount",
 		MType: models.Counter,
-		Delta: new(a.pollCount),
+		Delta: &a.pollCount,
+	})
+
+	if len(metrics) == 0 {
+		return
 	}
 
-	err := sendMetricsJSON(a.serverAddress, modelCounter)
+	err := sendMetricsBatch(a.serverAddress, metrics)
 	if err != nil {
 		return
 	}

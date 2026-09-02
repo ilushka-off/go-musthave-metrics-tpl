@@ -197,3 +197,30 @@ func (h *MetricsHandler) ValueJSON(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write(data)
 }
+
+func (h *MetricsHandler) UpdateBatch(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var metrics []models.Metrics
+
+	err := json.NewDecoder(r.Body).Decode(&metrics)
+	if err != nil {
+		h.log.Error("failed to unmarshal metrics", zap.Error(err))
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if len(metrics) == 0 {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	err = h.storage.UpdateBatch(metrics)
+	if err != nil {
+		h.log.Error("failed to update metrics", zap.Error(err))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+
+}

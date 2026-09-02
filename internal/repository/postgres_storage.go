@@ -3,6 +3,7 @@ package repository
 import (
 	"database/sql"
 
+	models "github.com/ilushka-off/go-musthave-metrics-tpl/internal/model"
 	"go.uber.org/zap"
 )
 
@@ -93,4 +94,42 @@ func (s PostgresStorage) AllCounters() map[string]int64 {
 		counters[id] = delta
 	}
 	return counters
+}
+
+func (s PostgresStorage) UpdateBatch(metrics []models.Metrics) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		s.log.Error("Transaction error", zap.Error(err))
+		return err
+	}
+
+	for _, metric := range metrics {
+		switch metric.MType {
+		case models.Gauge:
+			if metric.Value == nil {
+				continue
+			}
+			_, err := tx.Exec("INSERT INTO gauges (id, value) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET value = EXCLUDED.value", metric.ID, metric.Value)
+			if err != nil {
+				s.log.Error("Insert gauge failed", zap.Error(err))
+				tx.Rollback()
+				return err
+			}
+		case models.Counter:
+			if metric.Delta == nil {
+				continue
+			}
+			_, err := tx.Exec("INSERT INTO counters (id, delta) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET delta = counters.delta + EXCLUDED.delta", metric.ID, metric.Delta)
+			if err != nil {
+				s.log.Error("Insert counter failed", zap.Error(err))
+				tx.Rollback()
+				return err
+			}
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		s.log.Error("Transaction error", zap.Error(err))
+		return err
+	}
+	return nil
 }

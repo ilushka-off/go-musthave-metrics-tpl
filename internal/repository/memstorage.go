@@ -1,6 +1,10 @@
 package repository
 
-import "sync"
+import (
+	"sync"
+
+	models "github.com/ilushka-off/go-musthave-metrics-tpl/internal/model"
+)
 
 type MemStorage struct {
 	mu       sync.Mutex
@@ -62,4 +66,24 @@ func (s *MemStorage) AllCounters() map[string]int64 {
 		result[name] = value
 	}
 	return result
+}
+
+func (s *MemStorage) UpdateBatch(metrics []models.Metrics) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, metric := range metrics {
+		switch metric.MType {
+		case models.Gauge:
+			if metric.Value == nil {
+				continue
+			}
+			s.gauges[metric.ID] = *metric.Value
+		case models.Counter:
+			if metric.Delta == nil {
+				continue
+			}
+			s.counters[metric.ID] += *metric.Delta
+		}
+	}
+	return nil
 }
