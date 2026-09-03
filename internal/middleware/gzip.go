@@ -27,7 +27,6 @@ func GzipDecompress() func(http.Handler) http.Handler {
 			}
 
 			next.ServeHTTP(w, r)
-			return
 		})
 	}
 }

@@ -2,13 +2,55 @@ package repository
 
 import (
 	"database/sql"
+	"errors"
+	"fmt"
 	"os"
 	"testing"
 
 	models "github.com/ilushka-off/go-musthave-metrics-tpl/internal/model"
+	"github.com/jackc/pgerrcode"
+	"github.com/jackc/pgx/v5/pgconn"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"go.uber.org/zap"
 )
+
+func TestIsPgConnRetriable_TrueForClass08Codes(t *testing.T) {
+	class08Codes := []string{
+		pgerrcode.ConnectionException,
+		pgerrcode.ConnectionDoesNotExist,
+		pgerrcode.ConnectionFailure,
+		pgerrcode.SQLClientUnableToEstablishSQLConnection,
+		pgerrcode.SQLServerRejectedEstablishmentOfSQLConnection,
+		pgerrcode.TransactionResolutionUnknown,
+		pgerrcode.ProtocolViolation,
+	}
+
+	for _, code := range class08Codes {
+		t.Run(code, func(t *testing.T) {
+			err := fmt.Errorf("wrapped: %w", &pgconn.PgError{Code: code})
+			if !isPgConnRetriable(err) {
+				t.Fatalf("isPgConnRetriable(code=%s) = false, want true", code)
+			}
+		})
+	}
+}
+
+func TestIsPgConnRetriable_FalseForOtherCodes(t *testing.T) {
+	// UniqueViolation — тот самый пример из задания: класс 23, не 08, повторять не нужно.
+	err := &pgconn.PgError{Code: pgerrcode.UniqueViolation}
+	if isPgConnRetriable(err) {
+		t.Fatalf("isPgConnRetriable(UniqueViolation) = true, want false")
+	}
+}
+
+func TestIsPgConnRetriable_FalseForNonPgError(t *testing.T) {
+	if isPgConnRetriable(errors.New("plain error")) {
+		t.Fatal("expected false for a non-pgconn.PgError error")
+	}
+	if isPgConnRetriable(nil) {
+		t.Fatal("expected false for nil error")
+	}
+}
 
 func newTestPostgresStorage(t *testing.T) *PostgresStorage {
 	dsn := os.Getenv("DATABASE_DSN")
@@ -42,18 +84,18 @@ func TestPostgresStorage_UpdateGaugeAndCounter(t *testing.T) {
 	if err := s.UpdateGauge("test_Alloc", 10.5); err != nil {
 		t.Fatalf("UpdateGauge: %v", err)
 	}
-	v, ok := s.Gauge("test_Alloc")
-	if !ok || v != 10.5 {
-		t.Fatalf("Gauge(test_Alloc) = %v, %v; want 10.5, true", v, ok)
+	v, err := s.Gauge("test_Alloc")
+	if err != nil || v != 10.5 {
+		t.Fatalf("Gauge(test_Alloc) = %v, %v; want 10.5, nil", v, err)
 	}
 
 	// повторная запись должна заменять значение, а не складывать
 	if err := s.UpdateGauge("test_Alloc", 20); err != nil {
 		t.Fatalf("UpdateGauge: %v", err)
 	}
-	v, ok = s.Gauge("test_Alloc")
-	if !ok || v != 20 {
-		t.Fatalf("Gauge(test_Alloc) after overwrite = %v, %v; want 20, true", v, ok)
+	v, err = s.Gauge("test_Alloc")
+	if err != nil || v != 20 {
+		t.Fatalf("Gauge(test_Alloc) after overwrite = %v, %v; want 20, nil", v, err)
 	}
 
 	if err := s.UpdateCounter("test_PollCount", 1); err != nil {
@@ -62,20 +104,22 @@ func TestPostgresStorage_UpdateGaugeAndCounter(t *testing.T) {
 	if err := s.UpdateCounter("test_PollCount", 2); err != nil {
 		t.Fatalf("UpdateCounter: %v", err)
 	}
-	c, ok := s.Counter("test_PollCount")
-	if !ok || c != 3 {
-		t.Fatalf("Counter(test_PollCount) = %v, %v; want 3, true", c, ok)
+	c, err := s.Counter("test_PollCount")
+	if err != nil || c != 3 {
+		t.Fatalf("Counter(test_PollCount) = %v, %v; want 3, nil", c, err)
 	}
 }
 
 func TestPostgresStorage_MissingKey(t *testing.T) {
 	s := newTestPostgresStorage(t)
 
-	if _, ok := s.Gauge("test_missing"); ok {
-		t.Fatal("Gauge(test_missing) ok = true; want false")
+	// отсутствие метрики должно приходить именно как ErrNotFound,
+	// иначе хендлер отдаст 500 вместо 404
+	if _, err := s.Gauge("test_missing"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Gauge(test_missing) err = %v; want ErrNotFound", err)
 	}
-	if _, ok := s.Counter("test_missing"); ok {
-		t.Fatal("Counter(test_missing) ok = true; want false")
+	if _, err := s.Counter("test_missing"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Counter(test_missing) err = %v; want ErrNotFound", err)
 	}
 }
 
@@ -118,20 +162,20 @@ func TestPostgresStorage_UpdateBatch(t *testing.T) {
 		t.Fatalf("UpdateBatch: %v", err)
 	}
 
-	v, ok := s.Gauge("test_Alloc")
-	if !ok || v != 42.5 {
-		t.Fatalf("Gauge(test_Alloc) = %v, %v; want 42.5, true", v, ok)
+	v, err := s.Gauge("test_Alloc")
+	if err != nil || v != 42.5 {
+		t.Fatalf("Gauge(test_Alloc) = %v, %v; want 42.5, nil", v, err)
 	}
 
-	c, ok := s.Counter("test_PollCount")
-	if !ok || c != 3 {
-		t.Fatalf("Counter(test_PollCount) = %v, %v; want 3, true", c, ok)
+	c, err := s.Counter("test_PollCount")
+	if err != nil || c != 3 {
+		t.Fatalf("Counter(test_PollCount) = %v, %v; want 3, nil", c, err)
 	}
 
-	if _, ok := s.Gauge("test_BadGauge"); ok {
-		t.Fatal("Gauge(test_BadGauge) ok = true; want false (nil Value must be skipped)")
+	if _, err := s.Gauge("test_BadGauge"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Gauge(test_BadGauge) err = %v; want ErrNotFound (nil Value must be skipped)", err)
 	}
-	if _, ok := s.Counter("test_BadCounter"); ok {
-		t.Fatal("Counter(test_BadCounter) ok = true; want false (nil Delta must be skipped)")
+	if _, err := s.Counter("test_BadCounter"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Counter(test_BadCounter) err = %v; want ErrNotFound (nil Delta must be skipped)", err)
 	}
 }

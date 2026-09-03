@@ -17,6 +17,11 @@ func NewPingHandler(db *sql.DB, log *zap.Logger) *PingHandler {
 }
 
 func (h *PingHandler) Ping(w http.ResponseWriter, r *http.Request) {
+	if h == nil || h.db == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+
 	err := h.db.PingContext(r.Context())
 	if err != nil {
 		h.log.Error("failed to ping database", zap.Error(err))
