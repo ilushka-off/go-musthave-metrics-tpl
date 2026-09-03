@@ -59,36 +59,48 @@ func main() {
 
 	defer logger.Sync()
 
-	storage, err := repository.NewFileStorage(*filePath, *restore)
-	if err != nil {
-		logger.Error("Failed to restore metrics from file", zap.Error(err))
-	}
+	var storage repository.Storage
+	var pingHandler *handler.PingHandler
 
-	if *storeInterval > 0 {
-		go func() {
-			ticker := time.NewTicker(time.Duration(*storeInterval) * time.Second)
+	if *databaseDsn != "" {
+		db, err := sql.Open("pgx", *databaseDsn)
+		if err != nil {
+			logger.Fatal("Failed to connect to database", zap.Error(err))
+		}
+		err = repository.RunMigrations(db)
+		if err != nil {
+			logger.Error("Failed to run migrations", zap.Error(err))
+		}
+		storage = repository.NewPostgresStorage(db, logger)
+		pingHandler = handler.NewPingHandler(db, logger)
+		defer db.Close()
+	} else if *filePath != "" {
+		storage, err = repository.NewFileStorage(*filePath, *restore)
+		if err != nil {
+			logger.Error("Failed to create file storage", zap.Error(err))
+		}
 
-			for range ticker.C {
-				err := repository.SaveToFile(storage, *filePath)
-				if err != nil {
-					logger.Error("Failed to save metrics to file", zap.Error(err))
+		if *storeInterval > 0 {
+			go func() {
+				ticker := time.NewTicker(time.Duration(*storeInterval) * time.Second)
+
+				for range ticker.C {
+					err := repository.SaveToFile(storage, *filePath)
+					if err != nil {
+						logger.Error("Failed to save metrics to file", zap.Error(err))
+					}
 				}
-			}
-
-		}()
+			}()
+		} else {
+			storage = repository.NewSyncStorage(storage, *filePath)
+		}
 	} else {
-		storage = repository.NewSyncStorage(storage, *filePath)
+		storage = repository.NewMemStorage()
 	}
 
 	h := handler.NewMetricsHandler(storage, logger)
-	db, err := sql.Open("pgx", *databaseDsn)
-	if err != nil {
-		logger.Fatal("Failed to connect to database", zap.Error(err))
-	}
-	defer db.Close()
 
-	database := handler.NewPingHandler(db)
-	router := handler.NewRouter(h, logger, database)
+	router := handler.NewRouter(h, logger, pingHandler)
 	if err := http.ListenAndServe(*addr, router); err != nil {
 		log.Fatal(err)
 	}

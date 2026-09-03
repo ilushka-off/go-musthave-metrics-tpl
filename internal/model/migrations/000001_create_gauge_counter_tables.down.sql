@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS gauges;
+DROP TABLE IF EXISTS counters;
