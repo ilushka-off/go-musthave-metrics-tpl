@@ -1,5 +1,7 @@
 package repository
 
+import models "github.com/ilushka-off/go-musthave-metrics-tpl/internal/model"
+
 type SyncStorage struct {
 	Storage
 	path string
@@ -21,6 +23,13 @@ func (s *SyncStorage) UpdateGauge(name string, value float64) error {
 
 func (s *SyncStorage) UpdateCounter(name string, value int64) error {
 	if err := s.Storage.UpdateCounter(name, value); err != nil {
+		return err
+	}
+	return SaveToFile(s.Storage, s.path)
+}
+
+func (s *SyncStorage) UpdateBatch(metrics []models.Metrics) error {
+	if err := s.Storage.UpdateBatch(metrics); err != nil {
 		return err
 	}
 	return SaveToFile(s.Storage, s.path)

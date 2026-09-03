@@ -1,5 +1,7 @@
 package repository
 
+import models "github.com/ilushka-off/go-musthave-metrics-tpl/internal/model"
+
 //go:generate go tool mockgen -source=storage.go -destination=mocks/storage_mock.go -package=mocks
 
 type Storage interface {
@@ -9,4 +11,5 @@ type Storage interface {
 	Counter(name string) (int64, bool)
 	AllGauges() map[string]float64
 	AllCounters() map[string]int64
+	UpdateBatch(metrics []models.Metrics) error
 }

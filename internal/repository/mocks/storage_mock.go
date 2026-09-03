@@ -12,6 +12,7 @@ package mocks
 import (
 	reflect "reflect"
 
+	models "github.com/ilushka-off/go-musthave-metrics-tpl/internal/model"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -95,6 +96,20 @@ func (m *MockStorage) Gauge(name string) (float64, bool) {
 func (mr *MockStorageMockRecorder) Gauge(name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Gauge", reflect.TypeOf((*MockStorage)(nil).Gauge), name)
+}
+
+// UpdateBatch mocks base method.
+func (m *MockStorage) UpdateBatch(metrics []models.Metrics) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateBatch", metrics)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateBatch indicates an expected call of UpdateBatch.
+func (mr *MockStorageMockRecorder) UpdateBatch(metrics any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateBatch", reflect.TypeOf((*MockStorage)(nil).UpdateBatch), metrics)
 }
 
 // UpdateCounter mocks base method.
