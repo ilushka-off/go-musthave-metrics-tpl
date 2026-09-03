@@ -43,26 +43,34 @@ func (s PostgresStorage) UpdateCounter(name string, value int64) error {
 
 }
 
-func (s PostgresStorage) Gauge(name string) (float64, bool) {
+func (s PostgresStorage) Gauge(name string) (float64, error) {
 	var value float64
 	err := retry.Do(retry.Delays, isPgConnRetriable, func() error {
 		return s.db.QueryRow("SELECT value FROM gauges WHERE id = $1", name).Scan(&value)
 	})
 	if err != nil {
-		return 0, false
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, ErrNotFound
+		}
+		s.log.Error("Query gauge failed", zap.Error(err))
+		return 0, err
 	}
-	return value, true
+	return value, nil
 }
 
-func (s PostgresStorage) Counter(name string) (int64, bool) {
+func (s PostgresStorage) Counter(name string) (int64, error) {
 	var delta int64
 	err := retry.Do(retry.Delays, isPgConnRetriable, func() error {
 		return s.db.QueryRow("SELECT delta FROM counters WHERE id = $1", name).Scan(&delta)
 	})
 	if err != nil {
-		return 0, false
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, ErrNotFound
+		}
+		s.log.Error("Query counter failed", zap.Error(err))
+		return 0, err
 	}
-	return delta, true
+	return delta, nil
 }
 
 func (s PostgresStorage) AllGauges() map[string]float64 {

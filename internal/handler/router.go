@@ -9,6 +9,7 @@ import (
 
 func NewRouter(h *MetricsHandler, log *zap.Logger, p *PingHandler) chi.Router {
 	r := chi.NewRouter()
+	r.Use(chimw.Recoverer)
 	r.Use(chimw.StripSlashes)
 	r.Use(middleware.Logger(log))
 	r.Use(middleware.GzipDecompress())

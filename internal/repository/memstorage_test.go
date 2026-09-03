@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"errors"
 	"testing"
 
 	models "github.com/ilushka-off/go-musthave-metrics-tpl/internal/model"
@@ -10,16 +11,16 @@ func TestMemStorage_UpdateGauge(t *testing.T) {
 	s := NewMemStorage()
 
 	s.UpdateGauge("Alloc", 10.5)
-	v, ok := s.Gauge("Alloc")
-	if !ok || v != 10.5 {
-		t.Fatalf("Gauge(Alloc) = %v, %v; want 10.5, true", v, ok)
+	v, err := s.Gauge("Alloc")
+	if err != nil || v != 10.5 {
+		t.Fatalf("Gauge(Alloc) = %v, %v; want 10.5, nil", v, err)
 	}
 
 	// повторное обновление должно перезаписывать значение, а не складывать
 	s.UpdateGauge("Alloc", 20)
-	v, ok = s.Gauge("Alloc")
-	if !ok || v != 20 {
-		t.Fatalf("Gauge(Alloc) after overwrite = %v, %v; want 20, true", v, ok)
+	v, err = s.Gauge("Alloc")
+	if err != nil || v != 20 {
+		t.Fatalf("Gauge(Alloc) after overwrite = %v, %v; want 20, nil", v, err)
 	}
 }
 
@@ -29,9 +30,9 @@ func TestMemStorage_UpdateCounter(t *testing.T) {
 	s.UpdateCounter("PollCount", 1)
 	s.UpdateCounter("PollCount", 2)
 
-	v, ok := s.Counter("PollCount")
-	if !ok || v != 3 {
-		t.Fatalf("Counter(PollCount) = %v, %v; want 3, true", v, ok)
+	v, err := s.Counter("PollCount")
+	if err != nil || v != 3 {
+		t.Fatalf("Counter(PollCount) = %v, %v; want 3, nil", v, err)
 	}
 }
 
@@ -53,31 +54,31 @@ func TestMemStorage_UpdateBatch(t *testing.T) {
 		t.Fatalf("UpdateBatch returned error: %v", err)
 	}
 
-	v, ok := s.Gauge("Alloc")
-	if !ok || v != 10.5 {
-		t.Fatalf("Gauge(Alloc) = %v, %v; want 10.5, true", v, ok)
+	v, err := s.Gauge("Alloc")
+	if err != nil || v != 10.5 {
+		t.Fatalf("Gauge(Alloc) = %v, %v; want 10.5, nil", v, err)
 	}
 
-	c, ok := s.Counter("PollCount")
-	if !ok || c != 3 {
-		t.Fatalf("Counter(PollCount) = %v, %v; want 3, true", c, ok)
+	c, err := s.Counter("PollCount")
+	if err != nil || c != 3 {
+		t.Fatalf("Counter(PollCount) = %v, %v; want 3, nil", c, err)
 	}
 
-	if _, ok := s.Gauge("BadGauge"); ok {
-		t.Fatal("Gauge(BadGauge) ok = true; want false (nil Value must be skipped)")
+	if _, err := s.Gauge("BadGauge"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Gauge(BadGauge) err = %v; want ErrNotFound (nil Value must be skipped)", err)
 	}
-	if _, ok := s.Counter("BadCounter"); ok {
-		t.Fatal("Counter(BadCounter) ok = true; want false (nil Delta must be skipped)")
+	if _, err := s.Counter("BadCounter"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Counter(BadCounter) err = %v; want ErrNotFound (nil Delta must be skipped)", err)
 	}
 }
 
 func TestMemStorage_MissingKey(t *testing.T) {
 	s := NewMemStorage()
 
-	if _, ok := s.Gauge("missing"); ok {
-		t.Fatal("Gauge(missing) ok = true; want false")
+	if _, err := s.Gauge("missing"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Gauge(missing) err = %v; want ErrNotFound", err)
 	}
-	if _, ok := s.Counter("missing"); ok {
-		t.Fatal("Counter(missing) ok = true; want false")
+	if _, err := s.Counter("missing"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Counter(missing) err = %v; want ErrNotFound", err)
 	}
 }

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -70,16 +71,26 @@ func (h *MetricsHandler) Value(w http.ResponseWriter, r *http.Request) {
 
 	switch metricsType {
 	case models.Gauge:
-		value, ok := h.storage.Gauge(metricsName)
-		if !ok {
+		value, err := h.storage.Gauge(metricsName)
+		if errors.Is(err, repository.ErrNotFound) {
 			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			h.log.Error("failed to read gauge", zap.Error(err))
+			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 		w.Write([]byte(strconv.FormatFloat(value, 'f', -1, 64)))
 	case models.Counter:
-		value, ok := h.storage.Counter(metricsName)
-		if !ok {
+		value, err := h.storage.Counter(metricsName)
+		if errors.Is(err, repository.ErrNotFound) {
 			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			h.log.Error("failed to read counter", zap.Error(err))
+			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 		w.Write([]byte(strconv.FormatInt(value, 10)))
@@ -139,7 +150,7 @@ func (h *MetricsHandler) UpdateJSON(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		if total, ok := h.storage.Counter(model.ID); ok {
+		if total, err := h.storage.Counter(model.ID); err == nil {
 			model.Delta = &total
 		}
 	default:
@@ -170,16 +181,26 @@ func (h *MetricsHandler) ValueJSON(w http.ResponseWriter, r *http.Request) {
 
 	switch model.MType {
 	case models.Gauge:
-		value, ok := h.storage.Gauge(model.ID)
-		if !ok {
+		value, err := h.storage.Gauge(model.ID)
+		if errors.Is(err, repository.ErrNotFound) {
 			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			h.log.Error("failed to read gauge", zap.Error(err))
+			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 		model.Value = &value
 	case models.Counter:
-		value, ok := h.storage.Counter(model.ID)
-		if !ok {
+		value, err := h.storage.Counter(model.ID)
+		if errors.Is(err, repository.ErrNotFound) {
 			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			h.log.Error("failed to read counter", zap.Error(err))
+			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 		model.Delta = &value

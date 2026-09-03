@@ -84,18 +84,18 @@ func TestPostgresStorage_UpdateGaugeAndCounter(t *testing.T) {
 	if err := s.UpdateGauge("test_Alloc", 10.5); err != nil {
 		t.Fatalf("UpdateGauge: %v", err)
 	}
-	v, ok := s.Gauge("test_Alloc")
-	if !ok || v != 10.5 {
-		t.Fatalf("Gauge(test_Alloc) = %v, %v; want 10.5, true", v, ok)
+	v, err := s.Gauge("test_Alloc")
+	if err != nil || v != 10.5 {
+		t.Fatalf("Gauge(test_Alloc) = %v, %v; want 10.5, nil", v, err)
 	}
 
 	// повторная запись должна заменять значение, а не складывать
 	if err := s.UpdateGauge("test_Alloc", 20); err != nil {
 		t.Fatalf("UpdateGauge: %v", err)
 	}
-	v, ok = s.Gauge("test_Alloc")
-	if !ok || v != 20 {
-		t.Fatalf("Gauge(test_Alloc) after overwrite = %v, %v; want 20, true", v, ok)
+	v, err = s.Gauge("test_Alloc")
+	if err != nil || v != 20 {
+		t.Fatalf("Gauge(test_Alloc) after overwrite = %v, %v; want 20, nil", v, err)
 	}
 
 	if err := s.UpdateCounter("test_PollCount", 1); err != nil {
@@ -104,20 +104,22 @@ func TestPostgresStorage_UpdateGaugeAndCounter(t *testing.T) {
 	if err := s.UpdateCounter("test_PollCount", 2); err != nil {
 		t.Fatalf("UpdateCounter: %v", err)
 	}
-	c, ok := s.Counter("test_PollCount")
-	if !ok || c != 3 {
-		t.Fatalf("Counter(test_PollCount) = %v, %v; want 3, true", c, ok)
+	c, err := s.Counter("test_PollCount")
+	if err != nil || c != 3 {
+		t.Fatalf("Counter(test_PollCount) = %v, %v; want 3, nil", c, err)
 	}
 }
 
 func TestPostgresStorage_MissingKey(t *testing.T) {
 	s := newTestPostgresStorage(t)
 
-	if _, ok := s.Gauge("test_missing"); ok {
-		t.Fatal("Gauge(test_missing) ok = true; want false")
+	// отсутствие метрики должно приходить именно как ErrNotFound,
+	// иначе хендлер отдаст 500 вместо 404
+	if _, err := s.Gauge("test_missing"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Gauge(test_missing) err = %v; want ErrNotFound", err)
 	}
-	if _, ok := s.Counter("test_missing"); ok {
-		t.Fatal("Counter(test_missing) ok = true; want false")
+	if _, err := s.Counter("test_missing"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Counter(test_missing) err = %v; want ErrNotFound", err)
 	}
 }
 
@@ -160,20 +162,20 @@ func TestPostgresStorage_UpdateBatch(t *testing.T) {
 		t.Fatalf("UpdateBatch: %v", err)
 	}
 
-	v, ok := s.Gauge("test_Alloc")
-	if !ok || v != 42.5 {
-		t.Fatalf("Gauge(test_Alloc) = %v, %v; want 42.5, true", v, ok)
+	v, err := s.Gauge("test_Alloc")
+	if err != nil || v != 42.5 {
+		t.Fatalf("Gauge(test_Alloc) = %v, %v; want 42.5, nil", v, err)
 	}
 
-	c, ok := s.Counter("test_PollCount")
-	if !ok || c != 3 {
-		t.Fatalf("Counter(test_PollCount) = %v, %v; want 3, true", c, ok)
+	c, err := s.Counter("test_PollCount")
+	if err != nil || c != 3 {
+		t.Fatalf("Counter(test_PollCount) = %v, %v; want 3, nil", c, err)
 	}
 
-	if _, ok := s.Gauge("test_BadGauge"); ok {
-		t.Fatal("Gauge(test_BadGauge) ok = true; want false (nil Value must be skipped)")
+	if _, err := s.Gauge("test_BadGauge"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Gauge(test_BadGauge) err = %v; want ErrNotFound (nil Value must be skipped)", err)
 	}
-	if _, ok := s.Counter("test_BadCounter"); ok {
-		t.Fatal("Counter(test_BadCounter) ok = true; want false (nil Delta must be skipped)")
+	if _, err := s.Counter("test_BadCounter"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Counter(test_BadCounter) err = %v; want ErrNotFound (nil Delta must be skipped)", err)
 	}
 }

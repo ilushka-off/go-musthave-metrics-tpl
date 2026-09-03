@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	models "github.com/ilushka-off/go-musthave-metrics-tpl/internal/model"
+	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/repository"
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/repository/mocks"
 )
 
@@ -32,14 +33,20 @@ func newMockStorage(t *testing.T) *mocks.MockStorage {
 		return nil
 	}).AnyTimes()
 
-	storage.EXPECT().Gauge(gomock.Any()).DoAndReturn(func(name string) (float64, bool) {
+	storage.EXPECT().Gauge(gomock.Any()).DoAndReturn(func(name string) (float64, error) {
 		v, ok := gauges[name]
-		return v, ok
+		if !ok {
+			return 0, repository.ErrNotFound
+		}
+		return v, nil
 	}).AnyTimes()
 
-	storage.EXPECT().Counter(gomock.Any()).DoAndReturn(func(name string) (int64, bool) {
+	storage.EXPECT().Counter(gomock.Any()).DoAndReturn(func(name string) (int64, error) {
 		v, ok := counters[name]
-		return v, ok
+		if !ok {
+			return 0, repository.ErrNotFound
+		}
+		return v, nil
 	}).AnyTimes()
 
 	storage.EXPECT().UpdateBatch(gomock.Any()).DoAndReturn(func(metrics []models.Metrics) error {
@@ -109,14 +116,14 @@ func TestMetricsHandler_Update_StoresValue(t *testing.T) {
 	h := NewMetricsHandler(storage, zap.NewNop())
 
 	doUpdateRequest(h, "gauge", "Alloc", "123.45")
-	if v, ok := storage.Gauge("Alloc"); !ok || v != 123.45 {
-		t.Fatalf("Gauge(Alloc) = %v, %v; want 123.45, true", v, ok)
+	if v, err := storage.Gauge("Alloc"); err != nil || v != 123.45 {
+		t.Fatalf("Gauge(Alloc) = %v, %v; want 123.45, nil", v, err)
 	}
 
 	doUpdateRequest(h, "counter", "PollCount", "1")
 	doUpdateRequest(h, "counter", "PollCount", "2")
-	if v, ok := storage.Counter("PollCount"); !ok || v != 3 {
-		t.Fatalf("Counter(PollCount) = %v, %v; want 3, true", v, ok)
+	if v, err := storage.Counter("PollCount"); err != nil || v != 3 {
+		t.Fatalf("Counter(PollCount) = %v, %v; want 3, nil", v, err)
 	}
 }
 
@@ -148,11 +155,11 @@ func TestMetricsHandler_UpdateBatch_StoresValues(t *testing.T) {
 		t.Fatalf("status = %d; want %d", rec.Code, http.StatusOK)
 	}
 
-	if v, ok := storage.Gauge("Alloc"); !ok || v != 123.45 {
-		t.Fatalf("Gauge(Alloc) = %v, %v; want 123.45, true", v, ok)
+	if v, err := storage.Gauge("Alloc"); err != nil || v != 123.45 {
+		t.Fatalf("Gauge(Alloc) = %v, %v; want 123.45, nil", v, err)
 	}
-	if v, ok := storage.Counter("PollCount"); !ok || v != 3 {
-		t.Fatalf("Counter(PollCount) = %v, %v; want 3, true", v, ok)
+	if v, err := storage.Counter("PollCount"); err != nil || v != 3 {
+		t.Fatalf("Counter(PollCount) = %v, %v; want 3, nil", v, err)
 	}
 }
 

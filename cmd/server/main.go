@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"flag"
 	"log"
@@ -63,13 +64,19 @@ func main() {
 	var pingHandler *handler.PingHandler
 
 	if *databaseDsn != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
 		db, err := sql.Open("pgx", *databaseDsn)
 		if err != nil {
 			logger.Fatal("Failed to connect to database", zap.Error(err))
 		}
+		err = db.PingContext(ctx)
+		if err != nil {
+			logger.Fatal("Failed to ping database", zap.Error(err))
+		}
 		err = repository.RunMigrations(db)
 		if err != nil {
-			logger.Error("Failed to run migrations", zap.Error(err))
+			logger.Fatal("Failed to run migrations", zap.Error(err))
 		}
 		storage = repository.NewPostgresStorage(db, logger)
 		pingHandler = handler.NewPingHandler(db, logger)

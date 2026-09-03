@@ -33,18 +33,24 @@ func (s *MemStorage) UpdateCounter(name string, value int64) error {
 	return nil
 }
 
-func (s *MemStorage) Gauge(name string) (float64, bool) {
+func (s *MemStorage) Gauge(name string) (float64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	v, ok := s.gauges[name]
-	return v, ok
+	if !ok {
+		return 0, ErrNotFound
+	}
+	return v, nil
 }
 
-func (s *MemStorage) Counter(name string) (int64, bool) {
+func (s *MemStorage) Counter(name string) (int64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	v, ok := s.counters[name]
-	return v, ok
+	if !ok {
+		return 0, ErrNotFound
+	}
+	return v, nil
 }
 
 func (s *MemStorage) AllGauges() map[string]float64 {
