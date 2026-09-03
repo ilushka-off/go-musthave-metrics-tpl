@@ -44,7 +44,7 @@ func newMockStorage(t *testing.T) *mocks.MockStorage {
 }
 
 func doUpdateRequest(h *MetricsHandler, mType, mName, mValue string) *httptest.ResponseRecorder {
-	mux := NewRouter(h, zap.NewNop())
+	mux := NewRouter(h, zap.NewNop(), nil)
 	req := httptest.NewRequest(http.MethodPost, "/update/"+mType+"/"+mName+"/"+mValue, nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -95,7 +95,7 @@ func TestMetricsHandler_Update_StoresValue(t *testing.T) {
 
 func TestMetricsHandler_Update_WrongMethod(t *testing.T) {
 	h := NewMetricsHandler(newMockStorage(t), zap.NewNop())
-	mux := NewRouter(h, zap.NewNop())
+	mux := NewRouter(h, zap.NewNop(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/update/gauge/Alloc/1", nil)
 	rec := httptest.NewRecorder()
