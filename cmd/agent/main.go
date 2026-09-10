@@ -15,6 +15,7 @@ func main() {
 	addr := flag.String("a", "localhost:8080", "HTTP server address")
 	reportInterval := flag.Int("r", 10, "Report interval in seconds")
 	pollInterval := flag.Int("p", 2, "Poll interval in seconds")
+	key := flag.String("k", "", "Key for hashing")
 	flag.Parse()
 
 	if envAddr, ok := os.LookupEnv("ADDRESS"); ok {
@@ -41,9 +42,13 @@ func main() {
 		}
 	}
 
+	if hashKey, ok := os.LookupEnv("KEY"); ok {
+		*key = hashKey
+	}
+
 	serverAddress := "http://" + *addr
 
-	a := agent.NewAgent(serverAddress, time.Duration(*pollInterval)*time.Second, time.Duration(*reportInterval)*time.Second)
+	a := agent.NewAgent(serverAddress, time.Duration(*pollInterval)*time.Second, time.Duration(*reportInterval)*time.Second, *key)
 	a.Run()
 
 }

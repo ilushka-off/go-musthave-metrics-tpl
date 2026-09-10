@@ -23,6 +23,7 @@ func main() {
 	filePath := flag.String("f", "metrics.json", "File path to store metrics")
 	restore := flag.Bool("r", false, "Restore metrics from file, if true")
 	databaseDsn := flag.String("d", "", "Database DSN")
+	key := flag.String("k", "", "Key for hashing")
 	flag.Parse()
 
 	if envAddr, ok := os.LookupEnv("ADDRESS"); ok {
@@ -51,6 +52,10 @@ func main() {
 
 	if envDatabaseDsn := os.Getenv("DATABASE_DSN"); envDatabaseDsn != "" {
 		*databaseDsn = envDatabaseDsn
+	}
+
+	if hashKey, ok := os.LookupEnv("KEY"); ok {
+		*key = hashKey
 	}
 
 	logger, err := zap.NewProduction()
@@ -107,7 +112,7 @@ func main() {
 
 	h := handler.NewMetricsHandler(storage, logger)
 
-	router := handler.NewRouter(h, logger, pingHandler)
+	router := handler.NewRouter(h, logger, pingHandler, *key)
 	if err := http.ListenAndServe(*addr, router); err != nil {
 		log.Fatal(err)
 	}

@@ -76,7 +76,7 @@ func TestSendMetricsBatch(t *testing.T) {
 		{ID: "PollCount", MType: models.Counter, Delta: &delta},
 	}
 
-	if err := sendMetricsBatch(server.URL, metrics); err != nil {
+	if err := sendMetricsBatch(server.URL, metrics, ""); err != nil {
 		t.Fatalf("sendMetricsBatch returned error: %v", err)
 	}
 
@@ -98,7 +98,7 @@ func TestSendMetricsBatch(t *testing.T) {
 }
 
 func TestSendMetricsBatch_ConnectionError(t *testing.T) {
-	if err := sendMetricsBatch("http://127.0.0.1:0", []models.Metrics{{ID: "Foo", MType: models.Gauge}}); err == nil {
+	if err := sendMetricsBatch("http://127.0.0.1:0", []models.Metrics{{ID: "Foo", MType: models.Gauge}}, ""); err == nil {
 		t.Fatal("expected error for unreachable server, got nil")
 	}
 }

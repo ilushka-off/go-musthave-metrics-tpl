@@ -12,7 +12,7 @@ import (
 )
 
 func TestAgent_Poll(t *testing.T) {
-	a := NewAgent("http://localhost:8080", time.Second, time.Second)
+	a := NewAgent("http://localhost:8080", time.Second, time.Second, "")
 
 	a.poll()
 	if len(a.gauges) == 0 {
@@ -48,7 +48,7 @@ func TestAgent_Report(t *testing.T) {
 	}))
 	defer server.Close()
 
-	a := NewAgent(server.URL, time.Second, time.Second)
+	a := NewAgent(server.URL, time.Second, time.Second, "")
 	a.poll()
 	wantMetrics := len(a.gauges) + 1 // все gauges + один counter PollCount
 
