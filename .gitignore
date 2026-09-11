@@ -25,5 +25,5 @@ vendor/
 .vscode
 
 # Compileted program
-agent
-server
+/agent
+/server
