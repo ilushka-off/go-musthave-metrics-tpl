@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -11,56 +12,104 @@ import (
 	models "github.com/ilushka-off/go-musthave-metrics-tpl/internal/model"
 )
 
-func TestAgent_Poll(t *testing.T) {
-	a := NewAgent("http://localhost:8080", time.Second, time.Second, "")
-
-	a.poll()
-	if len(a.gauges) == 0 {
-		t.Fatal("poll() did not populate gauges")
-	}
-	if a.pollCount != 1 {
-		t.Fatalf("pollCount = %d, want 1", a.pollCount)
-	}
-
-	a.poll()
-	if a.pollCount != 2 {
-		t.Fatalf("pollCount = %d, want 2", a.pollCount)
-	}
-}
-
-func TestAgent_Report(t *testing.T) {
+func TestAgent_Run_CollectsAndSends(t *testing.T) {
+	var mu sync.Mutex
 	var requestCount int
-	var metrics []models.Metrics
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requestCount++
+	var lastMetrics []models.Metrics
 
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		reader, err := compress.NewReader(r.Body)
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
+			return
 		}
 		defer reader.Close()
 
+		var metrics []models.Metrics
 		if err := json.NewDecoder(reader).Decode(&metrics); err != nil {
-			t.Fatal(err)
+			t.Error(err)
+			return
 		}
+
+		mu.Lock()
+		requestCount++
+		lastMetrics = metrics
+		mu.Unlock()
 
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
 
-	a := NewAgent(server.URL, time.Second, time.Second, "")
-	a.poll()
-	wantMetrics := len(a.gauges) + 1 // все gauges + один counter PollCount
+	a := NewAgent(server.URL, 20*time.Millisecond, 50*time.Millisecond, "", 2)
+	go a.Run()
 
-	a.report()
+	time.Sleep(300 * time.Millisecond)
 
-	if requestCount != 1 {
-		t.Fatalf("requestCount = %d, want %d", requestCount, 1)
+	mu.Lock()
+	defer mu.Unlock()
+
+	if requestCount == 0 {
+		t.Fatal("agent did not send any batch")
 	}
-	if len(metrics) != wantMetrics {
-		t.Fatalf("metrics in batch = %d, want %d", len(metrics), wantMetrics)
+
+	var hasPollCount, hasRuntimeGauge, hasGopsutilGauge bool
+	for _, m := range lastMetrics {
+		switch m.ID {
+		case "PollCount":
+			hasPollCount = true
+		case "Alloc":
+			hasRuntimeGauge = true
+		case "TotalMemory":
+			hasGopsutilGauge = true
+		}
 	}
-	if a.pollCount != 0 {
-		t.Fatalf("pollCount after report = %d, want 0 (must reset after sending)", a.pollCount)
+	if !hasPollCount {
+		t.Error("в батче нет PollCount")
 	}
+	if !hasRuntimeGauge {
+		t.Error("в батче нет runtime-метрики (Alloc)")
+	}
+	if !hasGopsutilGauge {
+		t.Error("в батче нет gopsutil-метрики (TotalMemory)")
+	}
+}
+
+func TestAgent_Run_RespectsRateLimit(t *testing.T) {
+	var mu sync.Mutex
+	var inFlight, maxInFlight int
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		inFlight++
+		if inFlight > maxInFlight {
+			maxInFlight = inFlight
+		}
+		mu.Unlock()
+
+		time.Sleep(30 * time.Millisecond) // имитируем медленный сервер
+
+		mu.Lock()
+		inFlight--
+		mu.Unlock()
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	const rateLimit = 2
+	a := NewAgent(server.URL, 5*time.Millisecond, 5*time.Millisecond, "", rateLimit)
+	go a.Run()
+
+	time.Sleep(300 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if maxInFlight > rateLimit {
+		t.Fatalf("одновременных запросов было %d, лимит %d", maxInFlight, rateLimit)
+	}
+	if maxInFlight == 0 {
+		t.Fatal("не зафиксировано ни одного запроса")
+	}
+	t.Logf("максимум одновременных запросов: %d (лимит %d)", maxInFlight, rateLimit)
 }
