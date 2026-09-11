@@ -128,9 +128,6 @@ func (a *Agent) scheduleReports(jobs chan<- []models.Metrics) {
 
 func (a *Agent) worker(jobs <-chan []models.Metrics) {
 	for metrics := range jobs {
-		err := sendMetricsBatch(a.serverAddress, metrics, a.hashKey)
-		if err != nil {
-			return
-		}
+		sendMetricsBatch(a.serverAddress, metrics, a.hashKey)
 	}
 }
