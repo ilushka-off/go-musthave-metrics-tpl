@@ -17,6 +17,10 @@ type Agent struct {
 }
 
 func NewAgent(serverAddress string, pollInterval, reportInterval time.Duration, hashKey string, rateLimit int) *Agent {
+	if rateLimit < 1 {
+		rateLimit = 1
+	}
+
 	return &Agent{
 		serverAddress:  serverAddress,
 		pollInterval:   pollInterval,

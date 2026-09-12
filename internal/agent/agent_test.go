@@ -12,6 +12,15 @@ import (
 	models "github.com/ilushka-off/go-musthave-metrics-tpl/internal/model"
 )
 
+func TestNewAgent_ClampsInvalidRateLimit(t *testing.T) {
+	for _, rl := range []int{0, -1, -100} {
+		a := NewAgent("http://localhost:8080", time.Second, time.Second, "", rl)
+		if a.rateLimit != 1 {
+			t.Fatalf("rateLimit=%d -> a.rateLimit=%d, want 1 (0 или отрицательный лимит не должен оставлять агента без воркеров)", rl, a.rateLimit)
+		}
+	}
+}
+
 func TestAgent_Run_CollectsAndSends(t *testing.T) {
 	var mu sync.Mutex
 	var requestCount int
