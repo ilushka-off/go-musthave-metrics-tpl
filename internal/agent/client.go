@@ -10,6 +10,7 @@ import (
 	"net/url"
 
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/compress"
+	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/hash"
 	models "github.com/ilushka-off/go-musthave-metrics-tpl/internal/model"
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/retry"
 )
@@ -74,10 +75,16 @@ func sendMetricsJSON(serverAddress string, metrics models.Metrics) error {
 	})
 }
 
-func sendMetricsBatch(serverAddress string, metrics []models.Metrics) error {
+func sendMetricsBatch(serverAddress string, metrics []models.Metrics, hashKey string) error {
 	data, err := json.Marshal(metrics)
 	if err != nil {
 		return fmt.Errorf("marshal metrics: %w", err)
+	}
+
+	var signature string
+
+	if hashKey != "" {
+		signature = hash.Sign(data, hashKey)
 	}
 	gzData, err := compress.Compress(data)
 	if err != nil {
@@ -95,6 +102,10 @@ func sendMetricsBatch(serverAddress string, metrics []models.Metrics) error {
 		}
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Content-Encoding", "gzip")
+
+		if signature != "" {
+			req.Header.Set("HashSHA256", signature)
+		}
 
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {

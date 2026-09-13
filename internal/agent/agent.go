@@ -12,15 +12,17 @@ type Agent struct {
 	reportInterval time.Duration
 	gauges         map[string]float64
 	pollCount      int64
+	hashKey        string
 }
 
-func NewAgent(serverAddress string, pollInterval, reportInterval time.Duration) *Agent {
+func NewAgent(serverAddress string, pollInterval, reportInterval time.Duration, hashKey string) *Agent {
 	return &Agent{
 		serverAddress:  serverAddress,
 		pollInterval:   pollInterval,
 		reportInterval: reportInterval,
 		gauges:         make(map[string]float64),
 		pollCount:      0,
+		hashKey:        hashKey,
 	}
 }
 
@@ -67,7 +69,7 @@ func (a *Agent) report() {
 		return
 	}
 
-	err := sendMetricsBatch(a.serverAddress, metrics)
+	err := sendMetricsBatch(a.serverAddress, metrics, a.hashKey)
 	if err != nil {
 		return
 	}
