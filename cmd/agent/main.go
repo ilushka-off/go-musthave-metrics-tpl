@@ -16,6 +16,7 @@ func main() {
 	reportInterval := flag.Int("r", 10, "Report interval in seconds")
 	pollInterval := flag.Int("p", 2, "Poll interval in seconds")
 	key := flag.String("k", "", "Key for hashing")
+	rateLimit := flag.Int("l", 1, "Rate limit")
 	flag.Parse()
 
 	if envAddr, ok := os.LookupEnv("ADDRESS"); ok {
@@ -46,9 +47,18 @@ func main() {
 		*key = hashKey
 	}
 
+	if envRateLimit, ok := os.LookupEnv("RATE_LIMIT"); ok {
+		var err error
+
+		*rateLimit, err = strconv.Atoi(envRateLimit)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
 	serverAddress := "http://" + *addr
 
-	a := agent.NewAgent(serverAddress, time.Duration(*pollInterval)*time.Second, time.Duration(*reportInterval)*time.Second, *key)
+	a := agent.NewAgent(serverAddress, time.Duration(*pollInterval)*time.Second, time.Duration(*reportInterval)*time.Second, *key, *rateLimit)
 	a.Run()
 
 }
