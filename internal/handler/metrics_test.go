@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/audit"
 	"go.uber.org/mock/gomock"
 	"go.uber.org/zap"
 
@@ -102,7 +103,7 @@ func TestMetricsHandler_Update(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h := NewMetricsHandler(newMockStorage(t), zap.NewNop())
+			h := NewMetricsHandler(newMockStorage(t), zap.NewNop(), audit.NewAuditor(zap.NewNop()))
 			rec := doUpdateRequest(h, tt.mType, tt.mName, tt.mValue)
 			if rec.Code != tt.wantStatus {
 				t.Fatalf("status = %d; want %d", rec.Code, tt.wantStatus)
@@ -113,7 +114,7 @@ func TestMetricsHandler_Update(t *testing.T) {
 
 func TestMetricsHandler_Update_StoresValue(t *testing.T) {
 	storage := newMockStorage(t)
-	h := NewMetricsHandler(storage, zap.NewNop())
+	h := NewMetricsHandler(storage, zap.NewNop(), audit.NewAuditor(zap.NewNop()))
 
 	doUpdateRequest(h, "gauge", "Alloc", "123.45")
 	if v, err := storage.Gauge("Alloc"); err != nil || v != 123.45 {
@@ -128,7 +129,7 @@ func TestMetricsHandler_Update_StoresValue(t *testing.T) {
 }
 
 func TestMetricsHandler_Update_WrongMethod(t *testing.T) {
-	h := NewMetricsHandler(newMockStorage(t), zap.NewNop())
+	h := NewMetricsHandler(newMockStorage(t), zap.NewNop(), audit.NewAuditor(zap.NewNop()))
 	mux := NewRouter(h, zap.NewNop(), nil, "")
 
 	req := httptest.NewRequest(http.MethodGet, "/update/gauge/Alloc/1", nil)
@@ -142,7 +143,7 @@ func TestMetricsHandler_Update_WrongMethod(t *testing.T) {
 
 func TestMetricsHandler_UpdateBatch_StoresValues(t *testing.T) {
 	storage := newMockStorage(t)
-	h := NewMetricsHandler(storage, zap.NewNop())
+	h := NewMetricsHandler(storage, zap.NewNop(), audit.NewAuditor(zap.NewNop()))
 
 	body := `[
 		{"id":"Alloc","type":"gauge","value":123.45},
@@ -164,7 +165,7 @@ func TestMetricsHandler_UpdateBatch_StoresValues(t *testing.T) {
 }
 
 func TestMetricsHandler_UpdateBatch_Empty(t *testing.T) {
-	h := NewMetricsHandler(newMockStorage(t), zap.NewNop())
+	h := NewMetricsHandler(newMockStorage(t), zap.NewNop(), audit.NewAuditor(zap.NewNop()))
 
 	rec := doUpdateBatchRequest(h, `[]`)
 	if rec.Code != http.StatusOK {
@@ -173,7 +174,7 @@ func TestMetricsHandler_UpdateBatch_Empty(t *testing.T) {
 }
 
 func TestMetricsHandler_UpdateBatch_InvalidJSON(t *testing.T) {
-	h := NewMetricsHandler(newMockStorage(t), zap.NewNop())
+	h := NewMetricsHandler(newMockStorage(t), zap.NewNop(), audit.NewAuditor(zap.NewNop()))
 
 	rec := doUpdateBatchRequest(h, `not-json`)
 	if rec.Code != http.StatusBadRequest {

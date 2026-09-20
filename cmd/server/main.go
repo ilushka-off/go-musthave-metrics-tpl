@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/audit"
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/handler"
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/repository"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -24,6 +25,8 @@ func main() {
 	restore := flag.Bool("r", false, "Restore metrics from file, if true")
 	databaseDsn := flag.String("d", "", "Database DSN")
 	key := flag.String("k", "", "Key for hashing")
+	auditFile := flag.String("audit-file", "", "Audit flag")
+	auditURL := flag.String("audit-url", "", "Audit HTTP by URL")
 	flag.Parse()
 
 	if envAddr, ok := os.LookupEnv("ADDRESS"); ok {
@@ -58,12 +61,30 @@ func main() {
 		*key = hashKey
 	}
 
+	if envAuditFile, ok := os.LookupEnv("AUDIT_FILE"); ok {
+		*auditFile = envAuditFile
+	}
+
+	if envAuditURL, ok := os.LookupEnv("AUDIT_URL"); ok {
+		*auditURL = envAuditURL
+	}
+
 	logger, err := zap.NewProduction()
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	defer logger.Sync()
+
+	auditor := audit.NewAuditor(logger)
+	if *auditFile != "" {
+		file := audit.NewFileObserver(*auditFile)
+		auditor.Attach(file)
+	}
+	if *auditURL != "" {
+		url := audit.NewHTTPObserver(*auditURL)
+		auditor.Attach(url)
+	}
 
 	var storage repository.Storage
 	var pingHandler *handler.PingHandler
@@ -110,7 +131,7 @@ func main() {
 		storage = repository.NewMemStorage()
 	}
 
-	h := handler.NewMetricsHandler(storage, logger)
+	h := handler.NewMetricsHandler(storage, logger, auditor)
 
 	router := handler.NewRouter(h, logger, pingHandler, *key)
 	if err := http.ListenAndServe(*addr, router); err != nil {
