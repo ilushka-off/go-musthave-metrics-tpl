@@ -7,6 +7,9 @@ import (
 	"github.com/shirou/gopsutil/v4/mem"
 )
 
+// CollectGopsutilGauges returns system-wide memory and per-core CPU
+// utilization gauges (via gopsutil), named "TotalMemory", "FreeMemory", and
+// "CPUutilization<N>".
 func CollectGopsutilGauges() (map[string]float64, error) {
 	result := make(map[string]float64)
 

@@ -1,3 +1,5 @@
+// Package compress provides thin gzip helpers used by the HTTP compression
+// middleware.
 package compress
 
 import (
@@ -6,6 +8,7 @@ import (
 	"io"
 )
 
+// Compress gzip-compresses data and returns the compressed bytes.
 func Compress(data []byte) ([]byte, error) {
 	var buf bytes.Buffer
 
@@ -21,6 +24,8 @@ func Compress(data []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// NewReader wraps r in a gzip.Reader that decompresses on Read. The caller
+// is responsible for closing the returned reader.
 func NewReader(r io.Reader) (io.ReadCloser, error) {
 	return gzip.NewReader(r)
 }

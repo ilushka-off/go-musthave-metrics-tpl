@@ -1,3 +1,6 @@
+// Package middleware provides HTTP middleware for the metrics server:
+// request logging, gzip compression/decompression, and request/response
+// signing.
 package middleware
 
 import (
@@ -29,6 +32,8 @@ func (w *loggingResponseWriter) Write(b []byte) (int, error) {
 	return size, err
 }
 
+// Logger returns middleware that logs, for every request, its method, URI,
+// duration, response status code, and response size.
 func Logger(log *zap.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

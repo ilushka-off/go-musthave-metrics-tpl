@@ -8,11 +8,15 @@ import (
 	"time"
 )
 
+// HTTPObserver is an Observer that forwards each audit Event as a JSON POST
+// request to a remote URL.
 type HTTPObserver struct {
 	url    string
 	client *http.Client
 }
 
+// NewHTTPObserver creates an HTTPObserver that POSTs events to url using a
+// client with a bounded timeout.
 func NewHTTPObserver(url string) *HTTPObserver {
 	return &HTTPObserver{
 		url: url,
@@ -22,6 +26,8 @@ func NewHTTPObserver(url string) *HTTPObserver {
 	}
 }
 
+// Notify POSTs event as JSON to the observer's URL. It returns an error if
+// the request fails or the remote server responds with a non-200 status.
 func (ho *HTTPObserver) Notify(event Event) error {
 	data, err := json.Marshal(event)
 	if err != nil {

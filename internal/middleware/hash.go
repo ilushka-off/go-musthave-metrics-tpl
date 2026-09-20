@@ -23,6 +23,10 @@ func (w *hashResponseWriter) WriteHeader(statusCode int) {
 	w.statusCode = statusCode
 }
 
+// Hash returns middleware that verifies the "HashSHA256" request header (if
+// present) against an HMAC of the body signed with key, rejecting mismatches
+// with 400, and signs every response body with the same key in its own
+// "HashSHA256" header. If key is empty, the middleware is a no-op.
 func Hash(key string, log *zap.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

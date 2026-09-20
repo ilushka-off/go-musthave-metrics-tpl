@@ -13,6 +13,9 @@ type gzipResponseWriter struct {
 	gz *gzip.Writer
 }
 
+// GzipDecompress returns middleware that transparently decompresses request
+// bodies sent with a "Content-Encoding: gzip" header. A malformed gzip body
+// results in a 400 response.
 func GzipDecompress() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -48,6 +51,8 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 	return w.ResponseWriter.Write(b)
 }
 
+// GzipCompress returns middleware that gzip-compresses JSON and HTML
+// responses for clients that send "Accept-Encoding: gzip".
 func GzipCompress() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

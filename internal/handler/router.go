@@ -7,6 +7,11 @@ import (
 	"go.uber.org/zap"
 )
 
+// NewRouter builds the chi.Router for the metrics server: it wires up
+// logging, gzip and request-signing middleware, mounts the pprof debug
+// endpoints under /debug, and registers all metric and health-check routes.
+// p may be nil if the server was started without a database, in which case
+// GET /ping responds with 503.
 func NewRouter(h *MetricsHandler, log *zap.Logger, p *PingHandler, key string) chi.Router {
 	r := chi.NewRouter()
 	r.Use(chimw.Recoverer)
