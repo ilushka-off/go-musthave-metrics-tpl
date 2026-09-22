@@ -7,7 +7,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/audit"
@@ -77,9 +79,13 @@ func main() {
 	defer logger.Sync()
 
 	auditor := audit.NewAuditor(logger)
+	var fileObserver *audit.FileObserver
 	if *auditFile != "" {
-		file := audit.NewFileObserver(*auditFile)
-		auditor.Attach(file)
+		fileObserver, err = audit.NewFileObserver(*auditFile)
+		if err != nil {
+			logger.Fatal("failed to open audit file", zap.Error(err))
+		}
+		auditor.Attach(fileObserver)
 	}
 	if *auditURL != "" {
 		url := audit.NewHTTPObserver(*auditURL)
@@ -134,8 +140,32 @@ func main() {
 	h := handler.NewMetricsHandler(storage, logger, auditor)
 
 	router := handler.NewRouter(h, logger, pingHandler, *key)
-	if err := http.ListenAndServe(*addr, router); err != nil {
-		log.Fatal(err)
+
+	srv := &http.Server{Addr: *addr, Handler: router}
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Fatal("HTTP server failed", zap.Error(err))
+		}
+	}()
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	<-ctx.Done()
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		logger.Error("HTTP server shutdown error", zap.Error(err))
 	}
 
+	// The HTTP server has stopped accepting and has drained in-flight
+	// requests, so no goroutine can call auditor.Notify concurrently anymore
+	// -- safe to stop the observers now.
+	auditor.Close()
+	if fileObserver != nil {
+		if err := fileObserver.Close(); err != nil {
+			logger.Error("failed to close audit file", zap.Error(err))
+		}
+	}
 }

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/retry"
 )
 
 // HTTPObserver is an Observer that forwards each audit Event as a JSON POST
@@ -33,15 +35,22 @@ func (ho *HTTPObserver) Notify(event Event) error {
 	if err != nil {
 		return err
 	}
-	body := bytes.NewReader(data)
-	resp, err := ho.client.Post(ho.url, "application/json", body)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("http status code: %d", resp.StatusCode)
-	}
-	return nil
+
+	return retry.Do(retry.Delays, func(error) bool {
+		return true
+	},
+		func() error {
+			body := bytes.NewReader(data)
+			resp, err := ho.client.Post(ho.url, "application/json", body)
+			if err != nil {
+				return err
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				return fmt.Errorf("http status code: %d", resp.StatusCode)
+			}
+			return nil
+		},
+	)
 
 }

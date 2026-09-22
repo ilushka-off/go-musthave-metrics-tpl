@@ -126,10 +126,10 @@ func ExampleMetricsHandler_Index() {
 }
 
 // ExamplePingHandler_Ping demonstrates the database health-check endpoint.
-// With no database configured, the handler responds with 503.
+// With no PingHandler configured (server started without a database), the
+// router responds with 503 without calling into PingHandler at all.
 func ExamplePingHandler_Ping() {
-	h := NewPingHandler(nil, zap.NewNop())
-	router := NewRouter(NewMetricsHandler(repository.NewMemStorage(), zap.NewNop(), audit.NewAuditor(zap.NewNop())), zap.NewNop(), h, "")
+	router := NewRouter(NewMetricsHandler(repository.NewMemStorage(), zap.NewNop(), audit.NewAuditor(zap.NewNop())), zap.NewNop(), nil, "")
 
 	req := httptest.NewRequest(http.MethodGet, "/ping", nil)
 	rec := httptest.NewRecorder()
