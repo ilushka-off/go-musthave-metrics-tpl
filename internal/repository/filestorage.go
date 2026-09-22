@@ -8,6 +8,9 @@ import (
 	models "github.com/ilushka-off/go-musthave-metrics-tpl/internal/model"
 )
 
+// NewFileStorage creates a MemStorage-backed Storage. If restore is true,
+// its initial contents are loaded from the JSON file at path; the returned
+// error is the one from LoadFromFile in that case.
 func NewFileStorage(path string, restore bool) (Storage, error) {
 	storage := NewMemStorage()
 
@@ -18,6 +21,9 @@ func NewFileStorage(path string, restore bool) (Storage, error) {
 	return storage, LoadFromFile(storage, path)
 }
 
+// SaveToFile writes every gauge and counter in storage to path as a JSON
+// array, via an atomic create-temp-file-then-rename so a crash mid-write
+// cannot leave a truncated file.
 func SaveToFile(storage Storage, path string) error {
 	metrics := []models.Metrics{}
 
@@ -62,6 +68,8 @@ func SaveToFile(storage Storage, path string) error {
 	return os.Rename(tmpPath, path)
 }
 
+// LoadFromFile reads the JSON array of metrics previously written by
+// SaveToFile from path and applies each one to storage.
 func LoadFromFile(storage Storage, path string) error {
 	var metrics []models.Metrics
 

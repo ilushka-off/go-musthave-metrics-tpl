@@ -5,6 +5,9 @@ import (
 	"runtime"
 )
 
+// CollectRunTimeGauges reads runtime.MemStats and returns a snapshot of
+// Go runtime metrics as named gauges, plus a "RandomValue" gauge used to
+// verify that reported values actually change between polls.
 func CollectRunTimeGauges() map[string]float64 {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)

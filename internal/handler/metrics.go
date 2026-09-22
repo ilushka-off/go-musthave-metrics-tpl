@@ -1,3 +1,6 @@
+// Package handler implements the HTTP handlers and router for the metrics
+// collection server: updating and reading gauge/counter metrics, the HTML
+// index page, and the database health check.
 package handler
 
 import (
@@ -16,16 +19,25 @@ import (
 	"go.uber.org/zap"
 )
 
+// MetricsHandler serves the metric update/read endpoints. It persists
+// metrics through a repository.Storage and, on every successful update,
+// notifies an audit.Auditor about the request.
 type MetricsHandler struct {
 	storage repository.Storage
 	log     *zap.Logger
 	auditor *audit.Auditor
 }
 
+// NewMetricsHandler creates a MetricsHandler backed by the given storage.
+// auditor may have no observers attached, in which case audit notifications
+// are silently dropped.
 func NewMetricsHandler(s repository.Storage, log *zap.Logger, auditor *audit.Auditor) *MetricsHandler {
 	return &MetricsHandler{storage: s, log: log, auditor: auditor}
 }
 
+// Update handles POST /update/{type}/{name}/{value}: it parses a single
+// gauge or counter value from the URL path and stores it. It responds with
+// 400 for an unknown type or an unparsable value, and 200 on success.
 func (h *MetricsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
 
@@ -74,6 +86,9 @@ func (h *MetricsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// Value handles GET /value/{type}/{name}: it returns the current value of a
+// gauge or counter as plain text. It responds with 404 if the metric type is
+// unknown or the metric was never recorded.
 func (h *MetricsHandler) Value(w http.ResponseWriter, r *http.Request) {
 	metricsType := chi.URLParam(r, "type")
 	metricsName := chi.URLParam(r, "name")
@@ -108,6 +123,8 @@ func (h *MetricsHandler) Value(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// Index handles GET /: it renders an HTML page listing every known gauge and
+// counter and their current values.
 func (h *MetricsHandler) Index(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 
@@ -133,6 +150,10 @@ func (h *MetricsHandler) Index(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(b.String()))
 }
 
+// UpdateJSON handles POST /update: it decodes a single models.Metrics value
+// from the request body, stores it, and echoes it back as JSON (with Delta
+// set to the new cumulative total for counters). It responds with 400 for
+// malformed input or an unknown/missing value.
 func (h *MetricsHandler) UpdateJSON(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
@@ -191,6 +212,10 @@ func (h *MetricsHandler) UpdateJSON(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
+// ValueJSON handles POST /value: it decodes a models.Metrics value carrying
+// only ID and MType from the request body and responds with the full metric
+// (Value or Delta populated) as JSON. It responds with 404 if the metric was
+// never recorded.
 func (h *MetricsHandler) ValueJSON(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -242,6 +267,9 @@ func (h *MetricsHandler) ValueJSON(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
+// UpdateBatch handles POST /updates: it decodes a JSON array of
+// models.Metrics from the request body and stores all of them in a single
+// call to the underlying storage. An empty array is accepted and is a no-op.
 func (h *MetricsHandler) UpdateBatch(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 

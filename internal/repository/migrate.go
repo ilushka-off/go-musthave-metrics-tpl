@@ -10,6 +10,9 @@ import (
 	models "github.com/ilushka-off/go-musthave-metrics-tpl/internal/model"
 )
 
+// RunMigrations applies every pending schema migration embedded in
+// models.FS to db. It is idempotent: running it again with no pending
+// migrations is not an error.
 func RunMigrations(db *sql.DB) error {
 	sourceDriver, err := iofs.New(models.FS, "migrations")
 	if err != nil {

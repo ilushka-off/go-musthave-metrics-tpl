@@ -1,3 +1,6 @@
+// Package agent implements the metrics-collection agent: it periodically
+// polls runtime and system metrics and reports them to the server over
+// HTTP.
 package agent
 
 import (
@@ -6,6 +9,8 @@ import (
 	models "github.com/ilushka-off/go-musthave-metrics-tpl/internal/model"
 )
 
+// Agent periodically collects runtime and system metrics and reports them
+// to a metrics server. Create one with NewAgent and start it with Run.
 type Agent struct {
 	serverAddress  string
 	pollInterval   time.Duration
@@ -16,6 +21,10 @@ type Agent struct {
 	snapshotCh     chan chan []models.Metrics
 }
 
+// NewAgent creates an Agent that polls metrics every pollInterval and
+// reports them to serverAddress every reportInterval. hashKey, if non-empty,
+// is used to sign each report. rateLimit is the number of concurrent report
+// workers and is clamped to at least 1.
 func NewAgent(serverAddress string, pollInterval, reportInterval time.Duration, hashKey string, rateLimit int) *Agent {
 	if rateLimit < 1 {
 		rateLimit = 1
@@ -32,6 +41,8 @@ func NewAgent(serverAddress string, pollInterval, reportInterval time.Duration, 
 	}
 }
 
+// Run starts polling and reporting. It blocks forever, driving the
+// collection and reporting loops on background goroutines.
 func (a *Agent) Run() {
 	go a.accumulate()
 	go a.pollRuntime()

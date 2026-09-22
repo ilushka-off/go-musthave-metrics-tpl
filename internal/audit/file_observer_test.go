@@ -11,7 +11,11 @@ import (
 
 func TestFileObserver_Notify_WritesJSONLine(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.log")
-	obs := NewFileObserver(path)
+	obs, err := NewFileObserver(path)
+	if err != nil {
+		t.Fatalf("NewFileObserver() error = %v", err)
+	}
+	defer obs.Close()
 
 	event := Event{Timestamp: 123, Metrics: []string{"Alloc"}, IPAddress: "127.0.0.1"}
 	if err := obs.Notify(event); err != nil {
@@ -38,7 +42,11 @@ func TestFileObserver_Notify_WritesJSONLine(t *testing.T) {
 
 func TestFileObserver_Notify_AppendsOnSecondCall(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.log")
-	obs := NewFileObserver(path)
+	obs, err := NewFileObserver(path)
+	if err != nil {
+		t.Fatalf("NewFileObserver() error = %v", err)
+	}
+	defer obs.Close()
 
 	first := Event{Timestamp: 1, Metrics: []string{"Alloc"}, IPAddress: "127.0.0.1"}
 	second := Event{Timestamp: 2, Metrics: []string{"Frees"}, IPAddress: "127.0.0.1"}
@@ -61,11 +69,9 @@ func TestFileObserver_Notify_AppendsOnSecondCall(t *testing.T) {
 	}
 }
 
-func TestFileObserver_Notify_InvalidPathReturnsError(t *testing.T) {
+func TestNewFileObserver_InvalidPathReturnsError(t *testing.T) {
 	// A directory can't be opened for writing as a file.
-	obs := NewFileObserver(t.TempDir())
-
-	if err := obs.Notify(Event{}); err == nil {
-		t.Fatal("Notify() error = nil; want non-nil for a path that is a directory")
+	if _, err := NewFileObserver(t.TempDir()); err == nil {
+		t.Fatal("NewFileObserver() error = nil; want non-nil for a path that is a directory")
 	}
 }

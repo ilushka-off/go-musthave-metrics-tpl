@@ -36,6 +36,7 @@ func TestAuditor_Notify_CallsAllObservers(t *testing.T) {
 
 	event := Event{Timestamp: 42, Metrics: []string{"Alloc", "Frees"}, IPAddress: "127.0.0.1"}
 	a.Notify(event)
+	a.Close() // drains the per-observer goroutines so calls below are visible
 
 	for name, obs := range map[string]*fakeObserver{"first": first, "second": second} {
 		if len(obs.calls) != 1 {
@@ -55,6 +56,7 @@ func TestAuditor_Notify_ContinuesAfterObserverError(t *testing.T) {
 	a.Attach(ok)
 
 	a.Notify(Event{Timestamp: 1})
+	a.Close() // drains the per-observer goroutines so calls below are visible
 
 	if len(failing.calls) != 1 {
 		t.Fatalf("failing observer: got %d calls; want 1", len(failing.calls))

@@ -11,15 +11,21 @@ import (
 	"go.uber.org/zap"
 )
 
+// PostgresStorage is a PostgreSQL-backed implementation of Storage. Queries
+// that fail with a retriable connection error (see isPgConnRetriable) are
+// retried using retry.Delays.
 type PostgresStorage struct {
 	db  *sql.DB
 	log *zap.Logger
 }
 
+// NewPostgresStorage creates a PostgresStorage backed by db. The gauges and
+// counters tables are expected to already exist; see RunMigrations.
 func NewPostgresStorage(db *sql.DB, log *zap.Logger) *PostgresStorage {
 	return &PostgresStorage{db: db, log: log}
 }
 
+// UpdateGauge upserts the named gauge's value.
 func (s PostgresStorage) UpdateGauge(name string, value float64) error {
 	return retry.Do(retry.Delays, isPgConnRetriable, func() error {
 		_, err := s.db.Exec("INSERT INTO gauges (id, value) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET value = EXCLUDED.value", name, value)
@@ -31,6 +37,8 @@ func (s PostgresStorage) UpdateGauge(name string, value float64) error {
 	})
 }
 
+// UpdateCounter adds value to the named counter's running total, inserting a
+// new row if the counter does not exist yet.
 func (s PostgresStorage) UpdateCounter(name string, value int64) error {
 	return retry.Do(retry.Delays, isPgConnRetriable, func() error {
 		_, err := s.db.Exec("INSERT INTO counters (id, delta) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET delta = counters.delta + EXCLUDED.delta", name, value)
@@ -43,6 +51,8 @@ func (s PostgresStorage) UpdateCounter(name string, value int64) error {
 
 }
 
+// Gauge returns the current value of the named gauge, or ErrNotFound if it
+// has never been set.
 func (s PostgresStorage) Gauge(name string) (float64, error) {
 	var value float64
 	err := retry.Do(retry.Delays, isPgConnRetriable, func() error {
@@ -58,6 +68,8 @@ func (s PostgresStorage) Gauge(name string) (float64, error) {
 	return value, nil
 }
 
+// Counter returns the current value of the named counter, or ErrNotFound if
+// it has never been set.
 func (s PostgresStorage) Counter(name string) (int64, error) {
 	var delta int64
 	err := retry.Do(retry.Delays, isPgConnRetriable, func() error {
@@ -73,6 +85,8 @@ func (s PostgresStorage) Counter(name string) (int64, error) {
 	return delta, nil
 }
 
+// AllGauges returns every gauge and its current value. On a query error it
+// logs the error and returns an empty map.
 func (s PostgresStorage) AllGauges() map[string]float64 {
 	gauges := make(map[string]float64)
 
@@ -101,6 +115,8 @@ func (s PostgresStorage) AllGauges() map[string]float64 {
 	return gauges
 }
 
+// AllCounters returns every counter and its current value. On a query error
+// it logs the error and returns an empty map.
 func (s PostgresStorage) AllCounters() map[string]int64 {
 	counters := make(map[string]int64)
 
@@ -129,6 +145,8 @@ func (s PostgresStorage) AllCounters() map[string]int64 {
 	return counters
 }
 
+// UpdateBatch applies every metric in metrics within a single transaction.
+// Entries with a nil Value/Delta for their type are silently skipped.
 func (s PostgresStorage) UpdateBatch(metrics []models.Metrics) error {
 	return retry.Do(retry.Delays, isPgConnRetriable, func() error {
 		tx, err := s.db.Begin()
@@ -169,6 +187,8 @@ func (s PostgresStorage) UpdateBatch(metrics []models.Metrics) error {
 	})
 }
 
+// isPgConnRetriable reports whether err is a PostgreSQL connection-class
+// error worth retrying (e.g. connection loss or protocol violation).
 func isPgConnRetriable(err error) bool {
 	pgErr, ok := errors.AsType[*pgconn.PgError](err)
 	if !ok {
