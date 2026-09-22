@@ -4,11 +4,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/audit"
 	models "github.com/ilushka-off/go-musthave-metrics-tpl/internal/model"
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/repository"
 	"go.uber.org/zap"
@@ -17,10 +20,11 @@ import (
 type MetricsHandler struct {
 	storage repository.Storage
 	log     *zap.Logger
+	auditor *audit.Auditor
 }
 
-func NewMetricsHandler(s repository.Storage, log *zap.Logger) *MetricsHandler {
-	return &MetricsHandler{storage: s, log: log}
+func NewMetricsHandler(s repository.Storage, log *zap.Logger, auditor *audit.Auditor) *MetricsHandler {
+	return &MetricsHandler{storage: s, log: log, auditor: auditor}
 }
 
 func (h *MetricsHandler) Update(w http.ResponseWriter, r *http.Request) {
@@ -62,6 +66,12 @@ func (h *MetricsHandler) Update(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	host, _, _ := net.SplitHostPort(r.RemoteAddr)
+	h.auditor.Notify(audit.Event{
+		IPAddress: host,
+		Metrics:   []string{metricsName},
+		Timestamp: time.Now().Unix(),
+	})
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -164,6 +174,12 @@ func (h *MetricsHandler) UpdateJSON(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	host, _, _ := net.SplitHostPort(r.RemoteAddr)
+	h.auditor.Notify(audit.Event{
+		IPAddress: host,
+		Metrics:   []string{model.ID},
+		Timestamp: time.Now().Unix(),
+	})
 	w.WriteHeader(http.StatusOK)
 	w.Write(data)
 }
@@ -242,6 +258,16 @@ func (h *MetricsHandler) UpdateBatch(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	host, _, _ := net.SplitHostPort(r.RemoteAddr)
+	var slice []string
+	for _, metric := range metrics {
+		slice = append(slice, metric.ID)
+	}
+	h.auditor.Notify(audit.Event{
+		IPAddress: host,
+		Metrics:   slice,
+		Timestamp: time.Now().Unix(),
+	})
 	w.WriteHeader(http.StatusOK)
 
 }
