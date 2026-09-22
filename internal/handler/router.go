@@ -22,5 +22,6 @@ func NewRouter(h *MetricsHandler, log *zap.Logger, p *PingHandler, key string) c
 	r.Get("/", h.Index)
 	r.Post("/value", h.ValueJSON)
 	r.Post("/updates", h.UpdateBatch)
+	r.Mount("/debug", chimw.Profiler())
 	return r
 }

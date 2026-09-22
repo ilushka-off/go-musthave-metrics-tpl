@@ -3,7 +3,6 @@ package handler
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"strconv"
@@ -115,11 +114,19 @@ func (h *MetricsHandler) Index(w http.ResponseWriter, r *http.Request) {
 	var b strings.Builder
 
 	for name, value := range h.storage.AllGauges() {
-		b.WriteString(fmt.Sprintf("<p>%s: %f</p>", name, value))
+		b.WriteString("<p>")
+		b.WriteString(name)
+		b.WriteString(": ")
+		b.WriteString(strconv.FormatFloat(value, 'f', -1, 64))
+		b.WriteString("</p>")
 	}
 
 	for name, value := range h.storage.AllCounters() {
-		b.WriteString(fmt.Sprintf("<p>%s: %d</p>", name, value))
+		b.WriteString("<p>")
+		b.WriteString(name)
+		b.WriteString(": ")
+		b.WriteString(strconv.FormatInt(value, 10))
+		b.WriteString("</p>")
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -259,7 +266,7 @@ func (h *MetricsHandler) UpdateBatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	host, _, _ := net.SplitHostPort(r.RemoteAddr)
-	var slice []string
+	slice := make([]string, 0, len(metrics))
 	for _, metric := range metrics {
 		slice = append(slice, metric.ID)
 	}
