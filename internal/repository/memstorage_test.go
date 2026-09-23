@@ -10,14 +10,14 @@ import (
 func TestMemStorage_UpdateGauge(t *testing.T) {
 	s := NewMemStorage()
 
-	s.UpdateGauge("Alloc", 10.5)
+	_ = s.UpdateGauge("Alloc", 10.5)
 	v, err := s.Gauge("Alloc")
 	if err != nil || v != 10.5 {
 		t.Fatalf("Gauge(Alloc) = %v, %v; want 10.5, nil", v, err)
 	}
 
 	// повторное обновление должно перезаписывать значение, а не складывать
-	s.UpdateGauge("Alloc", 20)
+	_ = s.UpdateGauge("Alloc", 20)
 	v, err = s.Gauge("Alloc")
 	if err != nil || v != 20 {
 		t.Fatalf("Gauge(Alloc) after overwrite = %v, %v; want 20, nil", v, err)
@@ -27,8 +27,8 @@ func TestMemStorage_UpdateGauge(t *testing.T) {
 func TestMemStorage_UpdateCounter(t *testing.T) {
 	s := NewMemStorage()
 
-	s.UpdateCounter("PollCount", 1)
-	s.UpdateCounter("PollCount", 2)
+	_ = s.UpdateCounter("PollCount", 1)
+	_ = s.UpdateCounter("PollCount", 2)
 
 	v, err := s.Counter("PollCount")
 	if err != nil || v != 3 {

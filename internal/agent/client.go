@@ -26,7 +26,7 @@ func sendMetrics(serverAddress, mType, name, value string) error {
 		if err != nil {
 			return fmt.Errorf("post metric: %w", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			return fmt.Errorf("unexpected status code %d for %s", resp.StatusCode, reqURL)
@@ -65,7 +65,7 @@ func sendMetricsJSON(serverAddress string, metrics models.Metrics) error {
 		if err != nil {
 			return fmt.Errorf("post metrics: %w", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			return fmt.Errorf("unexpected status code %d for %s", resp.StatusCode, reqURL)
@@ -111,7 +111,7 @@ func sendMetricsBatch(serverAddress string, metrics []models.Metrics, hashKey st
 		if err != nil {
 			return fmt.Errorf("post metrics: %w", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode != http.StatusOK {
 			return fmt.Errorf("unexpected status code %d for %s", resp.StatusCode, reqURL)
 		}
