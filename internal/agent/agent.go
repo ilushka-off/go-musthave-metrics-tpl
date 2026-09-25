@@ -143,6 +143,6 @@ func (a *Agent) scheduleReports(jobs chan<- []models.Metrics) {
 
 func (a *Agent) worker(jobs <-chan []models.Metrics) {
 	for metrics := range jobs {
-		sendMetricsBatch(a.serverAddress, metrics, a.hashKey)
+		_ = sendMetricsBatch(a.serverAddress, metrics, a.hashKey)
 	}
 }

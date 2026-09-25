@@ -59,7 +59,7 @@ func TestSendMetricsBatch(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer reader.Close()
+		defer func() { _ = reader.Close() }()
 
 		if err := json.NewDecoder(reader).Decode(&gotMetrics); err != nil {
 			t.Fatal(err)
