@@ -4,6 +4,7 @@ package noosexit
 
 import (
 	"go/ast"
+	"go/types"
 	"regexp"
 
 	"golang.org/x/tools/go/analysis"
@@ -48,33 +49,40 @@ func run(pass *analysis.Pass) (interface{}, error) {
 			continue
 		}
 
-		for _, decl := range file.Decls {
-			fn, ok := decl.(*ast.FuncDecl)
-			if !ok || fn.Recv != nil || fn.Name.Name != "main" || fn.Body == nil {
-				continue
+		ast.Inspect(file, func(n ast.Node) bool {
+			switch n := n.(type) {
+			case *ast.FuncDecl:
+				// Calls inside func main are the only ones we care about,
+				// so skip the bodies of every other function and method.
+				return n.Recv == nil && n.Name.Name == "main"
+			case *ast.GenDecl:
+				// Package-level var/const initializers are not part of main.
+				return false
+			case *ast.CallExpr:
+				if isOSExit(pass, n) {
+					pass.Reportf(n.Pos(), "direct call to os.Exit in main function of package main is forbidden")
+				}
 			}
-
-			ast.Inspect(fn.Body, func(n ast.Node) bool {
-				call, ok := n.(*ast.CallExpr)
-				if !ok {
-					return true
-				}
-
-				sel, ok := call.Fun.(*ast.SelectorExpr)
-				if !ok || sel.Sel.Name != "Exit" {
-					return true
-				}
-
-				ident, ok := sel.X.(*ast.Ident)
-				if !ok || ident.Name != "os" {
-					return true
-				}
-
-				pass.Reportf(call.Pos(), "direct call to os.Exit in main function of package main is forbidden")
-				return true
-			})
-		}
+			return true
+		})
 	}
 
 	return nil, nil
+}
+
+// isOSExit reports whether call is a call to the Exit function of the
+// standard os package, regardless of the name os was imported under.
+func isOSExit(pass *analysis.Pass, call *ast.CallExpr) bool {
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || sel.Sel.Name != "Exit" {
+		return false
+	}
+
+	ident, ok := sel.X.(*ast.Ident)
+	if !ok {
+		return false
+	}
+
+	pkgName, ok := pass.TypesInfo.Uses[ident].(*types.PkgName)
+	return ok && pkgName.Imported().Path() == "os"
 }

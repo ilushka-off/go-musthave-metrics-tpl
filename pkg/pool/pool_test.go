@@ -43,3 +43,11 @@ func TestPool_GetCreatesNew(t *testing.T) {
 		t.Fatalf("expected constructor to be called once, got %d", calls)
 	}
 }
+
+func TestPool_NilNewFn(t *testing.T) {
+	p := New[*item](nil)
+
+	if x := p.Get(); x != nil {
+		t.Fatalf("expected zero value from empty pool, got %+v", x)
+	}
+}

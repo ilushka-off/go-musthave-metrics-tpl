@@ -13,23 +13,15 @@ import (
 
 // Build information, set at link time via -ldflags "-X main.buildVersion=...".
 var (
-	buildVersion string
-	buildDate    string
-	buildCommit  string
+	buildVersion = "N/A"
+	buildDate    = "N/A"
+	buildCommit  = "N/A"
 )
 
-// orNA returns s, or "N/A" if s is empty.
-func orNA(s string) string {
-	if s == "" {
-		return "N/A"
-	}
-	return s
-}
-
 func main() {
-	fmt.Printf("Build version: %s\n", orNA(buildVersion))
-	fmt.Printf("Build date: %s\n", orNA(buildDate))
-	fmt.Printf("Build commit: %s\n", orNA(buildCommit))
+	fmt.Printf("Build version: %s\n", buildVersion)
+	fmt.Printf("Build date: %s\n", buildDate)
+	fmt.Printf("Build commit: %s\n", buildCommit)
 
 	addr := flag.String("a", "localhost:8080", "HTTP server address")
 	reportInterval := flag.Int("r", 10, "Report interval in seconds")
