@@ -43,6 +43,28 @@ git fetch template && git checkout template/v2 .github
 - **Hexagonal Architecture**
 - **Layered Architecture**
 
+## Сборка
+
+Версия, дата сборки и коммит записываются в бинарник на этапе линковки через `-ldflags "-X ..."`. Если флаги не переданы, при запуске выводится `N/A`.
+
+Агент:
+
+```bash
+go build -o bin/agent \
+  -ldflags "-X main.buildVersion=v1.0.0 -X main.buildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) -X main.buildCommit=$(git rev-parse --short HEAD)" \
+  ./cmd/agent
+```
+
+Сервер:
+
+```bash
+go build -o bin/server \
+  -ldflags "-X main.buildVersion=v1.0.0 -X main.buildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) -X main.buildCommit=$(git rev-parse --short HEAD)" \
+  ./cmd/server
+```
+
+При запуске бинарник печатает `Build version`, `Build date` и `Build commit`.
+
 ## Бенчмарки
 
 Бенчмарки для важнейших компонентов сервера (`internal/handler/metrics_bench_test.go`) измеряют обработку HTTP-запросов на обновление/чтение метрик через полный роутер (включая middleware):

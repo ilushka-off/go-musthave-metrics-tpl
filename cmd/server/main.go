@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -19,7 +20,17 @@ import (
 	"go.uber.org/zap"
 )
 
+// Build information, set at link time via -ldflags "-X main.buildVersion=...".
+var (
+	buildVersion = "N/A"
+	buildDate    = "N/A"
+	buildCommit  = "N/A"
+)
+
 func main() {
+	fmt.Printf("Build version: %s\n", buildVersion)
+	fmt.Printf("Build date: %s\n", buildDate)
+	fmt.Printf("Build commit: %s\n", buildCommit)
 
 	addr := flag.String("a", "localhost:8080", "HTTP server address")
 	storeInterval := flag.Int("i", 300, "Store interval in seconds")
