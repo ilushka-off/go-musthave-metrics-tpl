@@ -97,7 +97,7 @@ func (s PostgresStorage) AllGauges() map[string]float64 {
 		if err != nil {
 			return err
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 
 		for rows.Next() {
 			var id string
@@ -127,7 +127,7 @@ func (s PostgresStorage) AllCounters() map[string]int64 {
 		if err != nil {
 			return err
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 
 		for rows.Next() {
 			var id string
@@ -164,7 +164,7 @@ func (s PostgresStorage) UpdateBatch(metrics []models.Metrics) error {
 				_, err := tx.Exec("INSERT INTO gauges (id, value) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET value = EXCLUDED.value", metric.ID, metric.Value)
 				if err != nil {
 					s.log.Error("Insert gauge failed", zap.Error(err))
-					tx.Rollback()
+					_ = tx.Rollback()
 					return err
 				}
 			case models.Counter:
@@ -174,7 +174,7 @@ func (s PostgresStorage) UpdateBatch(metrics []models.Metrics) error {
 				_, err := tx.Exec("INSERT INTO counters (id, delta) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET delta = counters.delta + EXCLUDED.delta", metric.ID, metric.Delta)
 				if err != nil {
 					s.log.Error("Insert counter failed", zap.Error(err))
-					tx.Rollback()
+					_ = tx.Rollback()
 					return err
 				}
 			}

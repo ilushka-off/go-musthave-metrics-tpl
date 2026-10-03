@@ -25,7 +25,7 @@ func GzipDecompress() func(http.Handler) http.Handler {
 					w.WriteHeader(http.StatusBadRequest)
 					return
 				}
-				defer gzReader.Close()
+				defer func() { _ = gzReader.Close() }()
 				r.Body = gzReader
 			}
 
@@ -60,7 +60,7 @@ func GzipCompress() func(http.Handler) http.Handler {
 				gzw := &gzipResponseWriter{ResponseWriter: w}
 				next.ServeHTTP(gzw, r)
 				if gzw.gz != nil {
-					gzw.gz.Close()
+					_ = gzw.gz.Close()
 				}
 			} else {
 				next.ServeHTTP(w, r)

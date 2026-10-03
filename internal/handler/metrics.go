@@ -105,7 +105,9 @@ func (h *MetricsHandler) Value(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		w.Write([]byte(strconv.FormatFloat(value, 'f', -1, 64)))
+		if _, err = w.Write([]byte(strconv.FormatFloat(value, 'f', -1, 64))); err != nil {
+			h.log.Error("failed to write response", zap.Error(err))
+		}
 	case models.Counter:
 		value, err := h.storage.Counter(metricsName)
 		if errors.Is(err, repository.ErrNotFound) {
@@ -117,7 +119,9 @@ func (h *MetricsHandler) Value(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		w.Write([]byte(strconv.FormatInt(value, 10)))
+		if _, err = w.Write([]byte(strconv.FormatInt(value, 10))); err != nil {
+			h.log.Error("failed to write response", zap.Error(err))
+		}
 	default:
 		w.WriteHeader(http.StatusNotFound)
 	}
@@ -147,7 +151,9 @@ func (h *MetricsHandler) Index(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(b.String()))
+	if _, err := w.Write([]byte(b.String())); err != nil {
+		h.log.Error("failed to write response", zap.Error(err))
+	}
 }
 
 // UpdateJSON handles POST /update: it decodes a single models.Metrics value
@@ -173,7 +179,7 @@ func (h *MetricsHandler) UpdateJSON(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		if err := h.storage.UpdateGauge(model.ID, *model.Value); err != nil {
+		if err = h.storage.UpdateGauge(model.ID, *model.Value); err != nil {
 			h.log.Error("failed to update gauge", zap.Error(err))
 			w.WriteHeader(http.StatusInternalServerError)
 			return
@@ -183,12 +189,13 @@ func (h *MetricsHandler) UpdateJSON(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		if err := h.storage.UpdateCounter(model.ID, *model.Delta); err != nil {
+		if err = h.storage.UpdateCounter(model.ID, *model.Delta); err != nil {
 			h.log.Error("failed to update counter", zap.Error(err))
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		if total, err := h.storage.Counter(model.ID); err == nil {
+		var total int64
+		if total, err = h.storage.Counter(model.ID); err == nil {
 			model.Delta = &total
 		}
 	default:
@@ -209,7 +216,9 @@ func (h *MetricsHandler) UpdateJSON(w http.ResponseWriter, r *http.Request) {
 		Timestamp: time.Now().Unix(),
 	})
 	w.WriteHeader(http.StatusOK)
-	w.Write(data)
+	if _, err = w.Write(data); err != nil {
+		h.log.Error("failed to write response", zap.Error(err))
+	}
 }
 
 // ValueJSON handles POST /value: it decodes a models.Metrics value carrying
@@ -229,7 +238,8 @@ func (h *MetricsHandler) ValueJSON(w http.ResponseWriter, r *http.Request) {
 
 	switch model.MType {
 	case models.Gauge:
-		value, err := h.storage.Gauge(model.ID)
+		var value float64
+		value, err = h.storage.Gauge(model.ID)
 		if errors.Is(err, repository.ErrNotFound) {
 			w.WriteHeader(http.StatusNotFound)
 			return
@@ -241,7 +251,8 @@ func (h *MetricsHandler) ValueJSON(w http.ResponseWriter, r *http.Request) {
 		}
 		model.Value = &value
 	case models.Counter:
-		value, err := h.storage.Counter(model.ID)
+		var value int64
+		value, err = h.storage.Counter(model.ID)
 		if errors.Is(err, repository.ErrNotFound) {
 			w.WriteHeader(http.StatusNotFound)
 			return
@@ -264,7 +275,9 @@ func (h *MetricsHandler) ValueJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusOK)
-	w.Write(data)
+	if _, err = w.Write(data); err != nil {
+		h.log.Error("failed to write response", zap.Error(err))
+	}
 }
 
 // UpdateBatch handles POST /updates: it decodes a JSON array of

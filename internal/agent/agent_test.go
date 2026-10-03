@@ -32,7 +32,7 @@ func TestAgent_Run_CollectsAndSends(t *testing.T) {
 			t.Error(err)
 			return
 		}
-		defer reader.Close()
+		defer func() { _ = reader.Close() }()
 
 		var metrics []models.Metrics
 		if err := json.NewDecoder(reader).Decode(&metrics); err != nil {

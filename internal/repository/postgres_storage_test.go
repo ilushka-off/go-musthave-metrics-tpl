@@ -62,7 +62,7 @@ func newTestPostgresStorage(t *testing.T) *PostgresStorage {
 	if err != nil {
 		t.Fatalf("sql.Open: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 
 	if err := RunMigrations(db); err != nil {
 		t.Fatalf("RunMigrations: %v", err)
@@ -71,8 +71,8 @@ func newTestPostgresStorage(t *testing.T) *PostgresStorage {
 	s := NewPostgresStorage(db, zap.NewNop())
 
 	t.Cleanup(func() {
-		db.Exec("DELETE FROM gauges WHERE id LIKE 'test_%'")
-		db.Exec("DELETE FROM counters WHERE id LIKE 'test_%'")
+		_, _ = db.Exec("DELETE FROM gauges WHERE id LIKE 'test_%'")
+		_, _ = db.Exec("DELETE FROM counters WHERE id LIKE 'test_%'")
 	})
 
 	return s
@@ -90,7 +90,7 @@ func TestPostgresStorage_UpdateGaugeAndCounter(t *testing.T) {
 	}
 
 	// повторная запись должна заменять значение, а не складывать
-	if err := s.UpdateGauge("test_Alloc", 20); err != nil {
+	if err = s.UpdateGauge("test_Alloc", 20); err != nil {
 		t.Fatalf("UpdateGauge: %v", err)
 	}
 	v, err = s.Gauge("test_Alloc")
@@ -98,10 +98,10 @@ func TestPostgresStorage_UpdateGaugeAndCounter(t *testing.T) {
 		t.Fatalf("Gauge(test_Alloc) after overwrite = %v, %v; want 20, nil", v, err)
 	}
 
-	if err := s.UpdateCounter("test_PollCount", 1); err != nil {
+	if err = s.UpdateCounter("test_PollCount", 1); err != nil {
 		t.Fatalf("UpdateCounter: %v", err)
 	}
-	if err := s.UpdateCounter("test_PollCount", 2); err != nil {
+	if err = s.UpdateCounter("test_PollCount", 2); err != nil {
 		t.Fatalf("UpdateCounter: %v", err)
 	}
 	c, err := s.Counter("test_PollCount")

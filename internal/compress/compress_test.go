@@ -19,7 +19,7 @@ func TestCompress_RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewReader() error = %v", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	decompressed, err := io.ReadAll(r)
 	if err != nil {
@@ -41,7 +41,7 @@ func TestCompress_EmptyInput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewReader() error = %v", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	decompressed, err := io.ReadAll(r)
 	if err != nil {

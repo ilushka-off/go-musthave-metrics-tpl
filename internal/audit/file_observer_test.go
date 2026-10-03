@@ -15,10 +15,10 @@ func TestFileObserver_Notify_WritesJSONLine(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewFileObserver() error = %v", err)
 	}
-	defer obs.Close()
+	defer func() { _ = obs.Close() }()
 
 	event := Event{Timestamp: 123, Metrics: []string{"Alloc"}, IPAddress: "127.0.0.1"}
-	if err := obs.Notify(event); err != nil {
+	if err = obs.Notify(event); err != nil {
 		t.Fatalf("Notify() error = %v; want nil", err)
 	}
 
@@ -46,15 +46,15 @@ func TestFileObserver_Notify_AppendsOnSecondCall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewFileObserver() error = %v", err)
 	}
-	defer obs.Close()
+	defer func() { _ = obs.Close() }()
 
 	first := Event{Timestamp: 1, Metrics: []string{"Alloc"}, IPAddress: "127.0.0.1"}
 	second := Event{Timestamp: 2, Metrics: []string{"Frees"}, IPAddress: "127.0.0.1"}
 
-	if err := obs.Notify(first); err != nil {
+	if err = obs.Notify(first); err != nil {
 		t.Fatalf("Notify(first) error = %v", err)
 	}
-	if err := obs.Notify(second); err != nil {
+	if err = obs.Notify(second); err != nil {
 		t.Fatalf("Notify(second) error = %v", err)
 	}
 

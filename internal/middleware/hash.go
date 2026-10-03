@@ -62,7 +62,9 @@ func Hash(key string, log *zap.Logger) func(http.Handler) http.Handler {
 				statusCode = http.StatusOK
 			}
 			w.WriteHeader(statusCode)
-			w.Write(hw.body.Bytes())
+			if _, err := w.Write(hw.body.Bytes()); err != nil {
+				log.Error("failed to write response", zap.Error(err))
+			}
 		})
 	}
 }

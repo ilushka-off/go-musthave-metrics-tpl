@@ -76,7 +76,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	defer logger.Sync()
+	defer func() { _ = logger.Sync() }()
 
 	auditor := audit.NewAuditor(logger)
 	var fileObserver *audit.FileObserver
@@ -98,7 +98,8 @@ func main() {
 	if *databaseDsn != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		db, err := sql.Open("pgx", *databaseDsn)
+		var db *sql.DB
+		db, err = sql.Open("pgx", *databaseDsn)
 		if err != nil {
 			logger.Fatal("Failed to connect to database", zap.Error(err))
 		}
@@ -112,7 +113,7 @@ func main() {
 		}
 		storage = repository.NewPostgresStorage(db, logger)
 		pingHandler = handler.NewPingHandler(db, logger)
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 	} else if *filePath != "" {
 		storage, err = repository.NewFileStorage(*filePath, *restore)
 		if err != nil {

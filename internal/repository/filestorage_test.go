@@ -34,8 +34,8 @@ func TestSaveToFile_ThenLoadFromFile_RoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "metrics.json")
 
 	original := NewMemStorage()
-	original.UpdateGauge("Alloc", 10.5)
-	original.UpdateCounter("PollCount", 3)
+	_ = original.UpdateGauge("Alloc", 10.5)
+	_ = original.UpdateCounter("PollCount", 3)
 
 	if err := SaveToFile(original, path); err != nil {
 		t.Fatalf("SaveToFile() error = %v", err)
@@ -58,7 +58,7 @@ func TestNewFileStorage_Restore_LoadsExistingData(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "metrics.json")
 
 	seed := NewMemStorage()
-	seed.UpdateGauge("Alloc", 42)
+	_ = seed.UpdateGauge("Alloc", 42)
 	if err := SaveToFile(seed, path); err != nil {
 		t.Fatalf("SaveToFile() error = %v", err)
 	}
