@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rsa"
 	"database/sql"
 	"flag"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/audit"
+	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/crypto"
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/handler"
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/repository"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -40,6 +42,7 @@ func main() {
 	key := flag.String("k", "", "Key for hashing")
 	auditFile := flag.String("audit-file", "", "Audit flag")
 	auditURL := flag.String("audit-url", "", "Audit HTTP by URL")
+	cryptoKey := flag.String("crypto-key", "", "Path to the private key file for decryption")
 	flag.Parse()
 
 	if envAddr, ok := os.LookupEnv("ADDRESS"); ok {
@@ -74,6 +77,10 @@ func main() {
 		*key = hashKey
 	}
 
+	if envCryptoKey, ok := os.LookupEnv("CRYPTO_KEY"); ok {
+		*cryptoKey = envCryptoKey
+	}
+
 	if envAuditFile, ok := os.LookupEnv("AUDIT_FILE"); ok {
 		*auditFile = envAuditFile
 	}
@@ -88,6 +95,14 @@ func main() {
 	}
 
 	defer func() { _ = logger.Sync() }()
+
+	var privateKey *rsa.PrivateKey
+	if *cryptoKey != "" {
+		privateKey, err = crypto.LoadPrivateKey(*cryptoKey)
+		if err != nil {
+			logger.Fatal("failed to load private key", zap.Error(err))
+		}
+	}
 
 	auditor := audit.NewAuditor(logger)
 	var fileObserver *audit.FileObserver
@@ -151,7 +166,7 @@ func main() {
 
 	h := handler.NewMetricsHandler(storage, logger, auditor)
 
-	router := handler.NewRouter(h, logger, pingHandler, *key)
+	router := handler.NewRouter(h, logger, pingHandler, *key, privateKey)
 
 	srv := &http.Server{Addr: *addr, Handler: router}
 

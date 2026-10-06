@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/rsa"
 	"flag"
 	"fmt"
 	"log"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/agent"
+	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/crypto"
 )
 
 // Build information, set at link time via -ldflags "-X main.buildVersion=...".
@@ -28,6 +30,7 @@ func main() {
 	pollInterval := flag.Int("p", 2, "Poll interval in seconds")
 	key := flag.String("k", "", "Key for hashing")
 	rateLimit := flag.Int("l", 1, "Rate limit")
+	cryptoKey := flag.String("crypto-key", "", "Path to the public key file for encryption")
 	flag.Parse()
 
 	if envAddr, ok := os.LookupEnv("ADDRESS"); ok {
@@ -67,9 +70,22 @@ func main() {
 		}
 	}
 
+	if envCryptoKey, ok := os.LookupEnv("CRYPTO_KEY"); ok {
+		*cryptoKey = envCryptoKey
+	}
+
+	var publicKey *rsa.PublicKey
+	if *cryptoKey != "" {
+		var err error
+		publicKey, err = crypto.LoadPublicKey(*cryptoKey)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
 	serverAddress := "http://" + *addr
 
-	a := agent.NewAgent(serverAddress, time.Duration(*pollInterval)*time.Second, time.Duration(*reportInterval)*time.Second, *key, *rateLimit)
+	a := agent.NewAgent(serverAddress, time.Duration(*pollInterval)*time.Second, time.Duration(*reportInterval)*time.Second, *key, *rateLimit, publicKey)
 	a.Run()
 
 }
