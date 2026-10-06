@@ -18,10 +18,13 @@ import (
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/audit"
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/config"
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/crypto"
+	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/grpcserver"
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/handler"
+	pb "github.com/ilushka-off/go-musthave-metrics-tpl/internal/proto"
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/repository"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 )
 
 // Build information, set at link time via -ldflags "-X main.buildVersion=...".
@@ -46,6 +49,7 @@ func main() {
 	auditURL := flag.String("audit-url", "", "Audit HTTP by URL")
 	cryptoKey := flag.String("crypto-key", "", "Path to the private key file for decryption")
 	trustedSubnet := flag.String("t", "", "Trusted subnet in CIDR notation")
+	grpcAddress := flag.String("grpc-address", "", "gRPC server address (gRPC is disabled if empty)")
 	configShort := flag.String("c", "", "Path to JSON config file")
 	configLong := flag.String("config", "", "Path to JSON config file")
 	flag.Parse()
@@ -74,6 +78,9 @@ func main() {
 		}
 		if fc.CryptoKey != nil && !set["crypto-key"] {
 			*cryptoKey = *fc.CryptoKey
+		}
+		if fc.GRPCAddress != nil && !set["grpc-address"] {
+			*grpcAddress = *fc.GRPCAddress
 		}
 		if fc.TrustedSubnet != nil && !set["t"] {
 			*trustedSubnet = *fc.TrustedSubnet
@@ -129,6 +136,10 @@ func main() {
 
 	if envTrustedSubnet, ok := os.LookupEnv("TRUSTED_SUBNET"); ok {
 		*trustedSubnet = envTrustedSubnet
+	}
+
+	if envGRPCAddress, ok := os.LookupEnv("GRPC_ADDRESS"); ok {
+		*grpcAddress = envGRPCAddress
 	}
 
 	if envAuditFile, ok := os.LookupEnv("AUDIT_FILE"); ok {
@@ -241,6 +252,24 @@ func main() {
 
 	srv := &http.Server{Addr: *addr, Handler: router}
 
+	var grpcSrv *grpc.Server
+	if *grpcAddress != "" {
+		var lc net.ListenConfig
+		lis, err := lc.Listen(ctx, "tcp", *grpcAddress)
+		if err != nil {
+			logger.Fatal("failed to listen for gRPC", zap.Error(err))
+		}
+
+		grpcSrv = grpc.NewServer(grpc.ChainUnaryInterceptor(grpcserver.TrustedSubnetInterceptor(trusted, logger)))
+		pb.RegisterMetricsServer(grpcSrv, grpcserver.New(storage, logger, auditor))
+
+		go func() {
+			if err := grpcSrv.Serve(lis); err != nil {
+				logger.Fatal("gRPC server failed", zap.Error(err))
+			}
+		}()
+	}
+
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Fatal("HTTP server failed", zap.Error(err))
@@ -253,6 +282,19 @@ func main() {
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Error("HTTP server shutdown error", zap.Error(err))
+	}
+
+	if grpcSrv != nil {
+		stopped := make(chan struct{})
+		go func() {
+			grpcSrv.GracefulStop()
+			close(stopped)
+		}()
+		select {
+		case <-stopped:
+		case <-shutdownCtx.Done():
+			grpcSrv.Stop()
+		}
 	}
 
 	// Flush metrics that the periodic saver has not written yet. Requests

@@ -6,10 +6,12 @@ package agent
 import (
 	"context"
 	"crypto/rsa"
+	"log"
 	"sync"
 	"time"
 
 	models "github.com/ilushka-off/go-musthave-metrics-tpl/internal/model"
+	pb "github.com/ilushka-off/go-musthave-metrics-tpl/internal/proto"
 )
 
 // Agent periodically collects runtime and system metrics and reports them
@@ -20,6 +22,8 @@ type Agent struct {
 	reportInterval time.Duration
 	hashKey        string
 	publicKey      *rsa.PublicKey
+	grpcAddress    string
+	grpcClient     pb.MetricsClient
 	rateLimit      int
 	metricsCh      chan models.Metrics
 	snapshotCh     chan chan []models.Metrics
@@ -47,6 +51,13 @@ func NewAgent(serverAddress string, pollInterval, reportInterval time.Duration, 
 	}
 }
 
+// UseGRPC makes the agent report to the gRPC server at address instead of the
+// HTTP server. It must be called before Run or RunContext. Request signing
+// and encryption apply to HTTP only and are not used over gRPC.
+func (a *Agent) UseGRPC(address string) {
+	a.grpcAddress = address
+}
+
 // Run starts polling and reporting. It blocks forever, driving the
 // collection and reporting loops on background goroutines.
 func (a *Agent) Run() {
@@ -58,6 +69,16 @@ func (a *Agent) Run() {
 // final batch, and RunContext returns only after every queued and in-flight
 // report has been delivered (or has exhausted its retries).
 func (a *Agent) RunContext(ctx context.Context) {
+	if a.grpcAddress != "" {
+		conn, err := dialGRPC(a.grpcAddress)
+		if err != nil {
+			log.Printf("agent: %v", err)
+			return
+		}
+		defer func() { _ = conn.Close() }()
+		a.grpcClient = pb.NewMetricsClient(conn)
+	}
+
 	go a.accumulate()
 
 	var pollers sync.WaitGroup
@@ -191,6 +212,10 @@ func (a *Agent) reportOnce(jobs chan<- []models.Metrics) {
 
 func (a *Agent) worker(jobs <-chan []models.Metrics) {
 	for metrics := range jobs {
+		if a.grpcClient != nil {
+			_ = sendMetricsGRPC(a.grpcClient, a.grpcAddress, metrics)
+			continue
+		}
 		_ = sendMetricsBatch(a.serverAddress, metrics, a.hashKey, a.publicKey)
 	}
 }

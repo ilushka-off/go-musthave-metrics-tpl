@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -11,6 +12,9 @@ import (
 
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/compress"
 	models "github.com/ilushka-off/go-musthave-metrics-tpl/internal/model"
+	pb "github.com/ilushka-off/go-musthave-metrics-tpl/internal/proto"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 )
 
 func TestNewAgent_ClampsInvalidRateLimit(t *testing.T) {
@@ -160,5 +164,64 @@ func TestAgent_RunContext_FlushesOnCancel(t *testing.T) {
 	defer mu.Unlock()
 	if requests != 1 {
 		t.Fatalf("expected exactly one final batch delivered, got %d", requests)
+	}
+}
+
+type fakeMetricsServer struct {
+	pb.UnimplementedMetricsServer
+	mu      sync.Mutex
+	batches [][]*pb.Metric
+	ips     []string
+}
+
+func (f *fakeMetricsServer) UpdateMetrics(ctx context.Context, req *pb.UpdateMetricsRequest) (*pb.UpdateMetricsResponse, error) {
+	md, _ := metadata.FromIncomingContext(ctx)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.batches = append(f.batches, req.GetMetrics())
+	f.ips = append(f.ips, md.Get("x-real-ip")...)
+	return &pb.UpdateMetricsResponse{}, nil
+}
+
+func TestAgent_RunContext_GRPC(t *testing.T) {
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake := &fakeMetricsServer{}
+	srv := grpc.NewServer()
+	pb.RegisterMetricsServer(srv, fake)
+	go func() { _ = srv.Serve(lis) }()
+	defer srv.Stop()
+
+	a := NewAgent("http://unused.invalid", 10*time.Millisecond, 50*time.Millisecond, "", 1, nil)
+	a.UseGRPC(lis.Addr().String())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		a.RunContext(ctx)
+		close(done)
+	}()
+	time.Sleep(300 * time.Millisecond)
+	cancel()
+	<-done
+
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	if len(fake.batches) == 0 {
+		t.Fatal("no batches received over gRPC")
+	}
+	if net.ParseIP(fake.ips[0]) == nil {
+		t.Fatalf("x-real-ip = %q, want a valid IP", fake.ips[0])
+	}
+	var hasPollCount bool
+	for _, m := range fake.batches[0] {
+		if m.GetId() == "PollCount" && m.GetType() == pb.Metric_COUNTER {
+			hasPollCount = true
+		}
+	}
+	if !hasPollCount {
+		t.Fatal("PollCount counter missing from gRPC batch")
 	}
 }

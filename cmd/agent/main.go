@@ -35,6 +35,7 @@ func main() {
 	key := flag.String("k", "", "Key for hashing")
 	rateLimit := flag.Int("l", 1, "Rate limit")
 	cryptoKey := flag.String("crypto-key", "", "Path to the public key file for encryption")
+	grpcAddress := flag.String("grpc-address", "", "gRPC server address (HTTP is used if empty)")
 	configShort := flag.String("c", "", "Path to JSON config file")
 	configLong := flag.String("config", "", "Path to JSON config file")
 	flag.Parse()
@@ -54,6 +55,9 @@ func main() {
 		}
 		if fc.PollInterval != nil && !set["p"] {
 			*pollInterval = fc.PollInterval.Seconds()
+		}
+		if fc.GRPCAddress != nil && !set["grpc-address"] {
+			*grpcAddress = *fc.GRPCAddress
 		}
 		if fc.CryptoKey != nil && !set["crypto-key"] {
 			*cryptoKey = *fc.CryptoKey
@@ -103,6 +107,10 @@ func main() {
 		}
 	}
 
+	if envGRPCAddress, ok := os.LookupEnv("GRPC_ADDRESS"); ok {
+		*grpcAddress = envGRPCAddress
+	}
+
 	if envCryptoKey, ok := os.LookupEnv("CRYPTO_KEY"); ok {
 		*cryptoKey = envCryptoKey
 	}
@@ -119,6 +127,10 @@ func main() {
 	serverAddress := "http://" + *addr
 
 	a := agent.NewAgent(serverAddress, time.Duration(*pollInterval)*time.Second, time.Duration(*reportInterval)*time.Second, *key, *rateLimit, publicKey)
+
+	if *grpcAddress != "" {
+		a.UseGRPC(*grpcAddress)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
 	defer stop()
