@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/audit"
+	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/config"
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/crypto"
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/handler"
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/repository"
@@ -43,7 +44,45 @@ func main() {
 	auditFile := flag.String("audit-file", "", "Audit flag")
 	auditURL := flag.String("audit-url", "", "Audit HTTP by URL")
 	cryptoKey := flag.String("crypto-key", "", "Path to the private key file for decryption")
+	configShort := flag.String("c", "", "Path to JSON config file")
+	configLong := flag.String("config", "", "Path to JSON config file")
 	flag.Parse()
+
+	if path := config.Path(*configShort, *configLong); path != "" {
+		fc, err := config.LoadServer(path)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		set := config.ExplicitFlags()
+		if fc.Address != nil && !set["a"] {
+			*addr = *fc.Address
+		}
+		if fc.Restore != nil && !set["r"] {
+			*restore = *fc.Restore
+		}
+		if fc.StoreInterval != nil && !set["i"] {
+			*storeInterval = fc.StoreInterval.Seconds()
+		}
+		if fc.StoreFile != nil && !set["f"] {
+			*filePath = *fc.StoreFile
+		}
+		if fc.DatabaseDSN != nil && !set["d"] {
+			*databaseDsn = *fc.DatabaseDSN
+		}
+		if fc.CryptoKey != nil && !set["crypto-key"] {
+			*cryptoKey = *fc.CryptoKey
+		}
+		if fc.Key != nil && !set["k"] {
+			*key = *fc.Key
+		}
+		if fc.AuditFile != nil && !set["audit-file"] {
+			*auditFile = *fc.AuditFile
+		}
+		if fc.AuditURL != nil && !set["audit-url"] {
+			*auditURL = *fc.AuditURL
+		}
+	}
 
 	if envAddr, ok := os.LookupEnv("ADDRESS"); ok {
 		*addr = envAddr
@@ -58,6 +97,8 @@ func main() {
 	}
 
 	if envFilePath, ok := os.LookupEnv("FILE_STORAGE_PATH"); ok {
+		*filePath = envFilePath
+	} else if envFilePath, ok := os.LookupEnv("STORE_FILE"); ok {
 		*filePath = envFilePath
 	}
 

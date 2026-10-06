@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/agent"
+	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/config"
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/crypto"
 )
 
@@ -31,7 +32,36 @@ func main() {
 	key := flag.String("k", "", "Key for hashing")
 	rateLimit := flag.Int("l", 1, "Rate limit")
 	cryptoKey := flag.String("crypto-key", "", "Path to the public key file for encryption")
+	configShort := flag.String("c", "", "Path to JSON config file")
+	configLong := flag.String("config", "", "Path to JSON config file")
 	flag.Parse()
+
+	if path := config.Path(*configShort, *configLong); path != "" {
+		fc, err := config.LoadAgent(path)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		set := config.ExplicitFlags()
+		if fc.Address != nil && !set["a"] {
+			*addr = *fc.Address
+		}
+		if fc.ReportInterval != nil && !set["r"] {
+			*reportInterval = fc.ReportInterval.Seconds()
+		}
+		if fc.PollInterval != nil && !set["p"] {
+			*pollInterval = fc.PollInterval.Seconds()
+		}
+		if fc.CryptoKey != nil && !set["crypto-key"] {
+			*cryptoKey = *fc.CryptoKey
+		}
+		if fc.Key != nil && !set["k"] {
+			*key = *fc.Key
+		}
+		if fc.RateLimit != nil && !set["l"] {
+			*rateLimit = *fc.RateLimit
+		}
+	}
 
 	if envAddr, ok := os.LookupEnv("ADDRESS"); ok {
 		*addr = envAddr
