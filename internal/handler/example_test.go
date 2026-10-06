@@ -16,7 +16,7 @@ import (
 func newExampleRouter() http.Handler {
 	storage := repository.NewMemStorage()
 	h := NewMetricsHandler(storage, zap.NewNop(), audit.NewAuditor(zap.NewNop()))
-	return NewRouter(h, zap.NewNop(), nil, "", nil)
+	return NewRouter(h, zap.NewNop(), nil, "", nil, nil)
 }
 
 // ExampleMetricsHandler_Update demonstrates updating a gauge metric by
@@ -129,7 +129,7 @@ func ExampleMetricsHandler_Index() {
 // With no PingHandler configured (server started without a database), the
 // router responds with 503 without calling into PingHandler at all.
 func ExamplePingHandler_Ping() {
-	router := NewRouter(NewMetricsHandler(repository.NewMemStorage(), zap.NewNop(), audit.NewAuditor(zap.NewNop())), zap.NewNop(), nil, "", nil)
+	router := NewRouter(NewMetricsHandler(repository.NewMemStorage(), zap.NewNop(), audit.NewAuditor(zap.NewNop())), zap.NewNop(), nil, "", nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/ping", nil)
 	rec := httptest.NewRecorder()

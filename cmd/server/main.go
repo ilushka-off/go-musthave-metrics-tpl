@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -44,6 +45,7 @@ func main() {
 	auditFile := flag.String("audit-file", "", "Audit flag")
 	auditURL := flag.String("audit-url", "", "Audit HTTP by URL")
 	cryptoKey := flag.String("crypto-key", "", "Path to the private key file for decryption")
+	trustedSubnet := flag.String("t", "", "Trusted subnet in CIDR notation")
 	configShort := flag.String("c", "", "Path to JSON config file")
 	configLong := flag.String("config", "", "Path to JSON config file")
 	flag.Parse()
@@ -72,6 +74,9 @@ func main() {
 		}
 		if fc.CryptoKey != nil && !set["crypto-key"] {
 			*cryptoKey = *fc.CryptoKey
+		}
+		if fc.TrustedSubnet != nil && !set["t"] {
+			*trustedSubnet = *fc.TrustedSubnet
 		}
 		if fc.Key != nil && !set["k"] {
 			*key = *fc.Key
@@ -122,6 +127,10 @@ func main() {
 		*cryptoKey = envCryptoKey
 	}
 
+	if envTrustedSubnet, ok := os.LookupEnv("TRUSTED_SUBNET"); ok {
+		*trustedSubnet = envTrustedSubnet
+	}
+
 	if envAuditFile, ok := os.LookupEnv("AUDIT_FILE"); ok {
 		*auditFile = envAuditFile
 	}
@@ -139,6 +148,14 @@ func main() {
 	}
 
 	defer func() { _ = logger.Sync() }()
+
+	var trusted *net.IPNet
+	if *trustedSubnet != "" {
+		_, trusted, err = net.ParseCIDR(*trustedSubnet)
+		if err != nil {
+			logger.Fatal("invalid trusted subnet", zap.Error(err))
+		}
+	}
 
 	var privateKey *rsa.PrivateKey
 	if *cryptoKey != "" {
@@ -220,7 +237,7 @@ func main() {
 
 	h := handler.NewMetricsHandler(storage, logger, auditor)
 
-	router := handler.NewRouter(h, logger, pingHandler, *key, privateKey)
+	router := handler.NewRouter(h, logger, pingHandler, *key, privateKey, trusted)
 
 	srv := &http.Server{Addr: *addr, Handler: router}
 

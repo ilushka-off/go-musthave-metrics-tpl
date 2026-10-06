@@ -2,6 +2,7 @@ package handler
 
 import (
 	"crypto/rsa"
+	"net"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -11,11 +12,11 @@ import (
 )
 
 // NewRouter builds the chi.Router for the metrics server: it wires up
-// logging, body decryption (if priv is non-nil), gzip and request-signing middleware, mounts the pprof debug
+// logging, body decryption (if priv is non-nil), the trusted-subnet check on update routes (if trusted is non-nil), gzip and request-signing middleware, mounts the pprof debug
 // endpoints under /debug, and registers all metric and health-check routes.
 // p may be nil if the server was started without a database, in which case
 // GET /ping responds with 503 without touching p.
-func NewRouter(h *MetricsHandler, log *zap.Logger, p *PingHandler, key string, priv *rsa.PrivateKey) chi.Router {
+func NewRouter(h *MetricsHandler, log *zap.Logger, p *PingHandler, key string, priv *rsa.PrivateKey, trusted *net.IPNet) chi.Router {
 	r := chi.NewRouter()
 	r.Use(chimw.Recoverer)
 	r.Use(chimw.StripSlashes)
@@ -31,12 +32,15 @@ func NewRouter(h *MetricsHandler, log *zap.Logger, p *PingHandler, key string, p
 			w.WriteHeader(http.StatusServiceUnavailable)
 		})
 	}
-	r.Post("/update/{type}/{name}/{value}", h.Update)
-	r.Post("/update", h.UpdateJSON)
+	// Only endpoints that accept metrics from agents are restricted to the
+	// trusted subnet (if configured).
+	ts := r.With(middleware.TrustedSubnet(trusted, log))
+	ts.Post("/update/{type}/{name}/{value}", h.Update)
+	ts.Post("/update", h.UpdateJSON)
 	r.Get("/value/{type}/{name}", h.Value)
 	r.Get("/", h.Index)
 	r.Post("/value", h.ValueJSON)
-	r.Post("/updates", h.UpdateBatch)
+	ts.Post("/updates", h.UpdateBatch)
 	r.Mount("/debug", chimw.Profiler())
 	return r
 }

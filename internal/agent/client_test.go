@@ -124,3 +124,19 @@ func TestIsConnRetriable_FalseForNil(t *testing.T) {
 		t.Fatal("expected isConnRetriable=false for nil error")
 	}
 }
+
+func TestSendMetricsBatch_SetsXRealIP(t *testing.T) {
+	var got string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Get("X-Real-IP")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	if err := sendMetricsBatch(server.URL, []models.Metrics{{ID: "Foo", MType: models.Gauge}}, "", nil); err != nil {
+		t.Fatal(err)
+	}
+	if net.ParseIP(got) == nil {
+		t.Fatalf("X-Real-IP = %q, want a valid IP", got)
+	}
+}
