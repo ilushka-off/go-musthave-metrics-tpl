@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"crypto/rsa"
 	"flag"
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/agent"
@@ -116,6 +119,10 @@ func main() {
 	serverAddress := "http://" + *addr
 
 	a := agent.NewAgent(serverAddress, time.Duration(*pollInterval)*time.Second, time.Duration(*reportInterval)*time.Second, *key, *rateLimit, publicKey)
-	a.Run()
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
+	defer stop()
+
+	a.RunContext(ctx)
 
 }

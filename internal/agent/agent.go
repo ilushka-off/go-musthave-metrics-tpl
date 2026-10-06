@@ -4,7 +4,9 @@
 package agent
 
 import (
+	"context"
 	"crypto/rsa"
+	"sync"
 	"time"
 
 	models "github.com/ilushka-off/go-musthave-metrics-tpl/internal/model"
@@ -48,16 +50,35 @@ func NewAgent(serverAddress string, pollInterval, reportInterval time.Duration, 
 // Run starts polling and reporting. It blocks forever, driving the
 // collection and reporting loops on background goroutines.
 func (a *Agent) Run() {
+	a.RunContext(context.Background())
+}
+
+// RunContext is like Run but stops when ctx is cancelled. On cancellation
+// polling stops, the metrics accumulated since the last report are sent as a
+// final batch, and RunContext returns only after every queued and in-flight
+// report has been delivered (or has exhausted its retries).
+func (a *Agent) RunContext(ctx context.Context) {
 	go a.accumulate()
-	go a.pollRuntime()
-	go a.pollGopsutilMetrics()
+
+	var pollers sync.WaitGroup
+	pollers.Add(2)
+	go func() { defer pollers.Done(); a.pollRuntime(ctx) }()
+	go func() { defer pollers.Done(); a.pollGopsutilMetrics(ctx) }()
 
 	jobs := make(chan []models.Metrics, a.rateLimit)
+	var workers sync.WaitGroup
 	for i := 0; i < a.rateLimit; i++ {
-		go a.worker(jobs)
+		workers.Add(1)
+		go func() { defer workers.Done(); a.worker(jobs) }()
 	}
 
-	a.scheduleReports(jobs)
+	a.scheduleReports(ctx, jobs)
+
+	// Pollers have stopped, so this snapshot holds everything collected.
+	pollers.Wait()
+	a.reportOnce(jobs)
+	close(jobs)
+	workers.Wait()
 }
 
 func (a *Agent) accumulate() {
@@ -95,11 +116,17 @@ func (a *Agent) accumulate() {
 	}
 }
 
-func (a *Agent) pollRuntime() {
+func (a *Agent) pollRuntime(ctx context.Context) {
 	ticker := time.NewTicker(a.pollInterval)
 	defer ticker.Stop()
 
-	for range ticker.C {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+
 		gauges := CollectRunTimeGauges()
 		for name, value := range gauges {
 			v := value
@@ -111,11 +138,17 @@ func (a *Agent) pollRuntime() {
 	}
 }
 
-func (a *Agent) pollGopsutilMetrics() {
+func (a *Agent) pollGopsutilMetrics(ctx context.Context) {
 	ticker := time.NewTicker(a.pollInterval)
 	defer ticker.Stop()
 
-	for range ticker.C {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+
 		gauges, err := CollectGopsutilGauges()
 		if err != nil {
 			continue
@@ -128,21 +161,32 @@ func (a *Agent) pollGopsutilMetrics() {
 	}
 }
 
-func (a *Agent) scheduleReports(jobs chan<- []models.Metrics) {
+func (a *Agent) scheduleReports(ctx context.Context, jobs chan<- []models.Metrics) {
 	ticker := time.NewTicker(a.reportInterval)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		reply := make(chan []models.Metrics)
-		a.snapshotCh <- reply
-		metrics := <-reply
-
-		if len(metrics) == 0 {
-			continue
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			a.reportOnce(jobs)
 		}
-
-		jobs <- metrics
 	}
+}
+
+// reportOnce takes a snapshot of the accumulated metrics and queues it for
+// sending. It blocks while the job queue is full.
+func (a *Agent) reportOnce(jobs chan<- []models.Metrics) {
+	reply := make(chan []models.Metrics)
+	a.snapshotCh <- reply
+	metrics := <-reply
+
+	if len(metrics) == 0 {
+		return
+	}
+
+	jobs <- metrics
 }
 
 func (a *Agent) worker(jobs <-chan []models.Metrics) {

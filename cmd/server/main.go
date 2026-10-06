@@ -130,6 +130,9 @@ func main() {
 		*auditURL = envAuditURL
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
+	defer stop()
+
 	logger, err := zap.NewProduction()
 	if err != nil {
 		log.Fatal(err)
@@ -160,17 +163,18 @@ func main() {
 	}
 
 	var storage repository.Storage
+	var saverDone chan struct{}
 	var pingHandler *handler.PingHandler
 
 	if *databaseDsn != "" {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		pingCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		var db *sql.DB
 		db, err = sql.Open("pgx", *databaseDsn)
 		if err != nil {
 			logger.Fatal("Failed to connect to database", zap.Error(err))
 		}
-		err = db.PingContext(ctx)
+		err = db.PingContext(pingCtx)
 		if err != nil {
 			logger.Fatal("Failed to ping database", zap.Error(err))
 		}
@@ -188,10 +192,19 @@ func main() {
 		}
 
 		if *storeInterval > 0 {
+			saverDone = make(chan struct{})
 			go func() {
+				defer close(saverDone)
 				ticker := time.NewTicker(time.Duration(*storeInterval) * time.Second)
+				defer ticker.Stop()
 
-				for range ticker.C {
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case <-ticker.C:
+					}
+
 					err := repository.SaveToFile(storage, *filePath)
 					if err != nil {
 						logger.Error("Failed to save metrics to file", zap.Error(err))
@@ -217,14 +230,21 @@ func main() {
 		}
 	}()
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	<-ctx.Done()
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Error("HTTP server shutdown error", zap.Error(err))
+	}
+
+	// Flush metrics that the periodic saver has not written yet. Requests
+	// are drained at this point, so the snapshot is complete.
+	if saverDone != nil {
+		<-saverDone
+		if err := repository.SaveToFile(storage, *filePath); err != nil {
+			logger.Error("Failed to save metrics to file on shutdown", zap.Error(err))
+		}
 	}
 
 	// The HTTP server has stopped accepting and has drained in-flight
