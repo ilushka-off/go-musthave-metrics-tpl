@@ -58,7 +58,11 @@ func (a *Agent) Run() {
 // final batch, and RunContext returns only after every queued and in-flight
 // report has been delivered (or has exhausted its retries).
 func (a *Agent) RunContext(ctx context.Context) {
-	go a.accumulate()
+	// accumulate gets its own context: it must outlive ctx to serve the final
+	// snapshot below, and is stopped only after that.
+	accCtx, stopAcc := context.WithCancel(context.Background())
+	defer stopAcc()
+	go a.accumulate(accCtx)
 
 	var pollers sync.WaitGroup
 	pollers.Add(2)
@@ -77,16 +81,19 @@ func (a *Agent) RunContext(ctx context.Context) {
 	// Pollers have stopped, so this snapshot holds everything collected.
 	pollers.Wait()
 	a.reportOnce(jobs)
+	stopAcc()
 	close(jobs)
 	workers.Wait()
 }
 
-func (a *Agent) accumulate() {
+func (a *Agent) accumulate(ctx context.Context) {
 	gauges := make(map[string]float64)
 	var pollCount int64
 
 	for {
 		select {
+		case <-ctx.Done():
+			return
 		case m := <-a.metricsCh:
 			switch m.MType {
 			case models.Gauge:

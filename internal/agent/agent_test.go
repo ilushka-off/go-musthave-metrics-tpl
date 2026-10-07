@@ -162,3 +162,21 @@ func TestAgent_RunContext_FlushesOnCancel(t *testing.T) {
 		t.Fatalf("expected exactly one final batch delivered, got %d", requests)
 	}
 }
+
+func TestAgent_Accumulate_StopsOnCancel(t *testing.T) {
+	a := NewAgent("", time.Second, time.Second, "", 1, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		a.accumulate(ctx)
+		close(done)
+	}()
+
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("accumulate did not return after cancel")
+	}
+}
