@@ -4,6 +4,7 @@
 package agent
 
 import (
+	"crypto/rsa"
 	"time"
 
 	models "github.com/ilushka-off/go-musthave-metrics-tpl/internal/model"
@@ -16,6 +17,7 @@ type Agent struct {
 	pollInterval   time.Duration
 	reportInterval time.Duration
 	hashKey        string
+	publicKey      *rsa.PublicKey
 	rateLimit      int
 	metricsCh      chan models.Metrics
 	snapshotCh     chan chan []models.Metrics
@@ -23,9 +25,10 @@ type Agent struct {
 
 // NewAgent creates an Agent that polls metrics every pollInterval and
 // reports them to serverAddress every reportInterval. hashKey, if non-empty,
-// is used to sign each report. rateLimit is the number of concurrent report
+// is used to sign each report. publicKey, if non-nil, is used to encrypt each
+// report body. rateLimit is the number of concurrent report
 // workers and is clamped to at least 1.
-func NewAgent(serverAddress string, pollInterval, reportInterval time.Duration, hashKey string, rateLimit int) *Agent {
+func NewAgent(serverAddress string, pollInterval, reportInterval time.Duration, hashKey string, rateLimit int, publicKey *rsa.PublicKey) *Agent {
 	if rateLimit < 1 {
 		rateLimit = 1
 	}
@@ -35,6 +38,7 @@ func NewAgent(serverAddress string, pollInterval, reportInterval time.Duration, 
 		pollInterval:   pollInterval,
 		reportInterval: reportInterval,
 		hashKey:        hashKey,
+		publicKey:      publicKey,
 		rateLimit:      rateLimit,
 		metricsCh:      make(chan models.Metrics),
 		snapshotCh:     make(chan chan []models.Metrics),
@@ -143,6 +147,6 @@ func (a *Agent) scheduleReports(jobs chan<- []models.Metrics) {
 
 func (a *Agent) worker(jobs <-chan []models.Metrics) {
 	for metrics := range jobs {
-		_ = sendMetricsBatch(a.serverAddress, metrics, a.hashKey)
+		_ = sendMetricsBatch(a.serverAddress, metrics, a.hashKey, a.publicKey)
 	}
 }

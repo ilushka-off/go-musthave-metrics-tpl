@@ -70,7 +70,7 @@ func newMockStorage(t *testing.T) *mocks.MockStorage {
 }
 
 func doUpdateBatchRequest(h *MetricsHandler, body string) *httptest.ResponseRecorder {
-	mux := NewRouter(h, zap.NewNop(), nil, "")
+	mux := NewRouter(h, zap.NewNop(), nil, "", nil)
 	req := httptest.NewRequest(http.MethodPost, "/updates", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -79,7 +79,7 @@ func doUpdateBatchRequest(h *MetricsHandler, body string) *httptest.ResponseReco
 }
 
 func doUpdateRequest(h *MetricsHandler, mType, mName, mValue string) *httptest.ResponseRecorder {
-	mux := NewRouter(h, zap.NewNop(), nil, "")
+	mux := NewRouter(h, zap.NewNop(), nil, "", nil)
 	req := httptest.NewRequest(http.MethodPost, "/update/"+mType+"/"+mName+"/"+mValue, nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -130,7 +130,7 @@ func TestMetricsHandler_Update_StoresValue(t *testing.T) {
 
 func TestMetricsHandler_Update_WrongMethod(t *testing.T) {
 	h := NewMetricsHandler(newMockStorage(t), zap.NewNop(), audit.NewAuditor(zap.NewNop()))
-	mux := NewRouter(h, zap.NewNop(), nil, "")
+	mux := NewRouter(h, zap.NewNop(), nil, "", nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/update/gauge/Alloc/1", nil)
 	rec := httptest.NewRecorder()

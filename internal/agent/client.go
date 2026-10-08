@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bytes"
+	"crypto/rsa"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"net/url"
 
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/compress"
+	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/crypto"
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/hash"
 	models "github.com/ilushka-off/go-musthave-metrics-tpl/internal/model"
 	"github.com/ilushka-off/go-musthave-metrics-tpl/internal/retry"
@@ -75,7 +77,7 @@ func sendMetricsJSON(serverAddress string, metrics models.Metrics) error {
 	})
 }
 
-func sendMetricsBatch(serverAddress string, metrics []models.Metrics, hashKey string) error {
+func sendMetricsBatch(serverAddress string, metrics []models.Metrics, hashKey string, publicKey *rsa.PublicKey) error {
 	data, err := json.Marshal(metrics)
 	if err != nil {
 		return fmt.Errorf("marshal metrics: %w", err)
@@ -90,13 +92,21 @@ func sendMetricsBatch(serverAddress string, metrics []models.Metrics, hashKey st
 	if err != nil {
 		return fmt.Errorf("compress metrics: %w", err)
 	}
+
+	body := gzData
+	if publicKey != nil {
+		body, err = crypto.Encrypt(publicKey, gzData)
+		if err != nil {
+			return fmt.Errorf("encrypt metrics: %w", err)
+		}
+	}
 	reqURL, err := url.JoinPath(serverAddress, "updates")
 	if err != nil {
 		return fmt.Errorf("build request url: %w", err)
 	}
 
 	return retry.Do(retry.Delays, isConnRetriable, func() error {
-		req, err := http.NewRequest("POST", reqURL, bytes.NewReader(gzData))
+		req, err := http.NewRequest("POST", reqURL, bytes.NewReader(body))
 		if err != nil {
 			return fmt.Errorf("build request: %w", err)
 		}

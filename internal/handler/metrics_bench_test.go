@@ -23,7 +23,7 @@ func newBenchHandler() *MetricsHandler {
 
 func BenchmarkMetricsHandler_Update(b *testing.B) {
 	h := newBenchHandler()
-	mux := NewRouter(h, zap.NewNop(), nil, "")
+	mux := NewRouter(h, zap.NewNop(), nil, "", nil)
 
 	for b.Loop() {
 		req := httptest.NewRequest(http.MethodPost, "/update/gauge/Alloc/123.45", nil)
@@ -34,7 +34,7 @@ func BenchmarkMetricsHandler_Update(b *testing.B) {
 
 func BenchmarkMetricsHandler_UpdateJSON(b *testing.B) {
 	h := newBenchHandler()
-	mux := NewRouter(h, zap.NewNop(), nil, "")
+	mux := NewRouter(h, zap.NewNop(), nil, "", nil)
 	body := `{"id":"Alloc","type":"gauge","value":123.45}`
 
 	for b.Loop() {
@@ -47,7 +47,7 @@ func BenchmarkMetricsHandler_UpdateJSON(b *testing.B) {
 
 func BenchmarkMetricsHandler_UpdateBatch(b *testing.B) {
 	h := newBenchHandler()
-	mux := NewRouter(h, zap.NewNop(), nil, "")
+	mux := NewRouter(h, zap.NewNop(), nil, "", nil)
 
 	const batchSize = 100
 	metrics := make([]models.Metrics, 0, batchSize)
@@ -75,7 +75,7 @@ func BenchmarkMetricsHandler_UpdateBatch(b *testing.B) {
 
 func BenchmarkMetricsHandler_Value(b *testing.B) {
 	h := newBenchHandler()
-	mux := NewRouter(h, zap.NewNop(), nil, "")
+	mux := NewRouter(h, zap.NewNop(), nil, "", nil)
 	seed := httptest.NewRequest(http.MethodPost, "/update/gauge/Alloc/123.45", nil)
 	mux.ServeHTTP(httptest.NewRecorder(), seed)
 
@@ -88,7 +88,7 @@ func BenchmarkMetricsHandler_Value(b *testing.B) {
 
 func BenchmarkMetricsHandler_ValueJSON(b *testing.B) {
 	h := newBenchHandler()
-	mux := NewRouter(h, zap.NewNop(), nil, "")
+	mux := NewRouter(h, zap.NewNop(), nil, "", nil)
 	seed := httptest.NewRequest(http.MethodPost, "/update/gauge/Alloc/123.45", nil)
 	mux.ServeHTTP(httptest.NewRecorder(), seed)
 	body := `{"id":"Alloc","type":"gauge"}`
@@ -103,7 +103,7 @@ func BenchmarkMetricsHandler_ValueJSON(b *testing.B) {
 
 func BenchmarkMetricsHandler_Index(b *testing.B) {
 	h := newBenchHandler()
-	mux := NewRouter(h, zap.NewNop(), nil, "")
+	mux := NewRouter(h, zap.NewNop(), nil, "", nil)
 	for i := 0; i < 100; i++ {
 		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/update/gauge/Metric%d/%d.5", i, i), nil)
 		mux.ServeHTTP(httptest.NewRecorder(), req)

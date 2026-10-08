@@ -14,7 +14,7 @@ import (
 
 func TestNewAgent_ClampsInvalidRateLimit(t *testing.T) {
 	for _, rl := range []int{0, -1, -100} {
-		a := NewAgent("http://localhost:8080", time.Second, time.Second, "", rl)
+		a := NewAgent("http://localhost:8080", time.Second, time.Second, "", rl, nil)
 		if a.rateLimit != 1 {
 			t.Fatalf("rateLimit=%d -> a.rateLimit=%d, want 1 (0 или отрицательный лимит не должен оставлять агента без воркеров)", rl, a.rateLimit)
 		}
@@ -49,7 +49,7 @@ func TestAgent_Run_CollectsAndSends(t *testing.T) {
 	}))
 	defer server.Close()
 
-	a := NewAgent(server.URL, 20*time.Millisecond, 50*time.Millisecond, "", 2)
+	a := NewAgent(server.URL, 20*time.Millisecond, 50*time.Millisecond, "", 2, nil)
 	go a.Run()
 
 	time.Sleep(300 * time.Millisecond)
@@ -106,7 +106,7 @@ func TestAgent_Run_RespectsRateLimit(t *testing.T) {
 	defer server.Close()
 
 	const rateLimit = 2
-	a := NewAgent(server.URL, 5*time.Millisecond, 5*time.Millisecond, "", rateLimit)
+	a := NewAgent(server.URL, 5*time.Millisecond, 5*time.Millisecond, "", rateLimit, nil)
 	go a.Run()
 
 	time.Sleep(300 * time.Millisecond)
