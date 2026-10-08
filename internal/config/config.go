@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -27,9 +28,6 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 	*d = Duration(v)
 	return nil
 }
-
-// Seconds returns d as a whole number of seconds.
-func (d Duration) Seconds() int { return int(time.Duration(d).Seconds()) }
 
 // Server is the server configuration file. Absent fields are nil.
 type Server struct {
@@ -98,10 +96,81 @@ func Path(flagShort, flagLong string) string {
 	return flagShort
 }
 
-// ExplicitFlags returns the names of the flags set on the command line.
-// Call it after flag.Parse.
-func ExplicitFlags() map[string]bool {
+// ExplicitFlags returns the names of the flags of fs set on the command line.
+// Call it after fs.Parse.
+func ExplicitFlags(fs *flag.FlagSet) map[string]bool {
 	set := make(map[string]bool)
-	flag.Visit(func(f *flag.Flag) { set[f.Name] = true })
+	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
 	return set
+}
+
+// Merger applies config file values to options whose flag was not set
+// explicitly on the command line. A nil file value leaves the option as is.
+type Merger struct {
+	explicit map[string]bool
+}
+
+// NewMerger creates a Merger for the flags of fs. Call it after fs.Parse.
+func NewMerger(fs *flag.FlagSet) Merger {
+	return Merger{explicit: ExplicitFlags(fs)}
+}
+
+// String sets *dst to *v unless the flag name was set explicitly.
+func (m Merger) String(name string, dst, v *string) { merge(m, name, dst, v) }
+
+// Int sets *dst to *v unless the flag name was set explicitly.
+func (m Merger) Int(name string, dst, v *int) { merge(m, name, dst, v) }
+
+// Bool sets *dst to *v unless the flag name was set explicitly.
+func (m Merger) Bool(name string, dst, v *bool) { merge(m, name, dst, v) }
+
+// Duration sets *dst to *v unless the flag name was set explicitly. The value
+// is kept as a time.Duration, so sub-second intervals are not truncated.
+func (m Merger) Duration(name string, dst *time.Duration, v *Duration) {
+	merge(m, name, dst, (*time.Duration)(v))
+}
+
+func merge[T any](m Merger, name string, dst, v *T) {
+	if v != nil && !m.explicit[name] {
+		*dst = *v
+	}
+}
+
+// EnvString sets *dst to the value of the environment variable name, if set.
+func EnvString(name string, dst *string) {
+	if v, ok := os.LookupEnv(name); ok {
+		*dst = v
+	}
+}
+
+// EnvInt sets *dst to the integer value of the environment variable name, if set.
+func EnvInt(name string, dst *int) error {
+	return env(name, dst, strconv.Atoi)
+}
+
+// EnvBool sets *dst to the boolean value of the environment variable name, if set.
+func EnvBool(name string, dst *bool) error {
+	return env(name, dst, strconv.ParseBool)
+}
+
+// EnvSeconds sets *dst from the environment variable name, if set, holding
+// a whole number of seconds.
+func EnvSeconds(name string, dst *time.Duration) error {
+	return env(name, dst, func(s string) (time.Duration, error) {
+		n, err := strconv.Atoi(s)
+		return time.Duration(n) * time.Second, err
+	})
+}
+
+func env[T any](name string, dst *T, parse func(string) (T, error)) error {
+	s, ok := os.LookupEnv(name)
+	if !ok {
+		return nil
+	}
+	v, err := parse(s)
+	if err != nil {
+		return fmt.Errorf("env %s: %w", name, err)
+	}
+	*dst = v
+	return nil
 }

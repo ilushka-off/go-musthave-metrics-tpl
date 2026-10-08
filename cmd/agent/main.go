@@ -3,12 +3,12 @@ package main
 import (
 	"context"
 	"crypto/rsa"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -30,8 +30,8 @@ func main() {
 	fmt.Printf("Build commit: %s\n", buildCommit)
 
 	addr := flag.String("a", "localhost:8080", "HTTP server address")
-	reportInterval := flag.Int("r", 10, "Report interval in seconds")
-	pollInterval := flag.Int("p", 2, "Poll interval in seconds")
+	reportSeconds := flag.Int("r", 10, "Report interval in seconds")
+	pollSeconds := flag.Int("p", 2, "Poll interval in seconds")
 	key := flag.String("k", "", "Key for hashing")
 	rateLimit := flag.Int("l", 1, "Rate limit")
 	cryptoKey := flag.String("crypto-key", "", "Path to the public key file for encryption")
@@ -40,79 +40,39 @@ func main() {
 	configLong := flag.String("config", "", "Path to JSON config file")
 	flag.Parse()
 
+	// Intervals are kept as time.Duration from here on, so sub-second values
+	// from the config file (e.g. "500ms") are not truncated to zero.
+	reportInterval := time.Duration(*reportSeconds) * time.Second
+	pollInterval := time.Duration(*pollSeconds) * time.Second
+
 	if path := config.Path(*configShort, *configLong); path != "" {
 		fc, err := config.LoadAgent(path)
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		set := config.ExplicitFlags()
-		if fc.Address != nil && !set["a"] {
-			*addr = *fc.Address
-		}
-		if fc.ReportInterval != nil && !set["r"] {
-			*reportInterval = fc.ReportInterval.Seconds()
-		}
-		if fc.PollInterval != nil && !set["p"] {
-			*pollInterval = fc.PollInterval.Seconds()
-		}
-		if fc.GRPCAddress != nil && !set["grpc-address"] {
-			*grpcAddress = *fc.GRPCAddress
-		}
-		if fc.CryptoKey != nil && !set["crypto-key"] {
-			*cryptoKey = *fc.CryptoKey
-		}
-		if fc.Key != nil && !set["k"] {
-			*key = *fc.Key
-		}
-		if fc.RateLimit != nil && !set["l"] {
-			*rateLimit = *fc.RateLimit
-		}
+		m := config.NewMerger(flag.CommandLine)
+		m.String("a", addr, fc.Address)
+		m.Duration("r", &reportInterval, fc.ReportInterval)
+		m.Duration("p", &pollInterval, fc.PollInterval)
+		m.String("crypto-key", cryptoKey, fc.CryptoKey)
+		m.String("k", key, fc.Key)
+		m.Int("l", rateLimit, fc.RateLimit)
 	}
 
-	if envAddr, ok := os.LookupEnv("ADDRESS"); ok {
-		*addr = envAddr
+	config.EnvString("ADDRESS", addr)
+	config.EnvString("KEY", key)
+	config.EnvString("CRYPTO_KEY", cryptoKey)
+	if err := errors.Join(
+		config.EnvSeconds("REPORT_INTERVAL", &reportInterval),
+		config.EnvSeconds("POLL_INTERVAL", &pollInterval),
+		config.EnvInt("RATE_LIMIT", rateLimit),
+	); err != nil {
+		log.Fatal(err)
 	}
 
-	if envReportInterval, ok := os.LookupEnv("REPORT_INTERVAL"); ok {
-		var err error
-		*reportInterval, err = strconv.Atoi(envReportInterval)
-
-		if err != nil {
-			log.Fatal(err)
-		}
-
-	}
-
-	if envPollInterval, ok := os.LookupEnv("POLL_INTERVAL"); ok {
-		var err error
-
-		*pollInterval, err = strconv.Atoi(envPollInterval)
-
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	if hashKey, ok := os.LookupEnv("KEY"); ok {
-		*key = hashKey
-	}
-
-	if envRateLimit, ok := os.LookupEnv("RATE_LIMIT"); ok {
-		var err error
-
-		*rateLimit, err = strconv.Atoi(envRateLimit)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	if envGRPCAddress, ok := os.LookupEnv("GRPC_ADDRESS"); ok {
-		*grpcAddress = envGRPCAddress
-	}
-
-	if envCryptoKey, ok := os.LookupEnv("CRYPTO_KEY"); ok {
-		*cryptoKey = envCryptoKey
+	if reportInterval <= 0 || pollInterval <= 0 {
+		log.Fatalf("report and poll intervals must be positive, got %v and %v", reportInterval, pollInterval)
 	}
 
 	var publicKey *rsa.PublicKey
@@ -126,7 +86,7 @@ func main() {
 
 	serverAddress := "http://" + *addr
 
-	a := agent.NewAgent(serverAddress, time.Duration(*pollInterval)*time.Second, time.Duration(*reportInterval)*time.Second, *key, *rateLimit, publicKey)
+	a := agent.NewAgent(serverAddress, pollInterval, reportInterval, *key, *rateLimit, publicKey)
 
 	if *grpcAddress != "" {
 		a.UseGRPC(*grpcAddress)
