@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -121,4 +122,61 @@ func TestAgent_Run_RespectsRateLimit(t *testing.T) {
 		t.Fatal("не зафиксировано ни одного запроса")
 	}
 	t.Logf("максимум одновременных запросов: %d (лимит %d)", maxInFlight, rateLimit)
+}
+
+func TestAgent_RunContext_FlushesOnCancel(t *testing.T) {
+	var mu sync.Mutex
+	var requests int
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(50 * time.Millisecond)
+		mu.Lock()
+		requests++
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	// Report interval is far longer than the test, so the only batch that can
+	// reach the server is the final one sent on cancellation.
+	a := NewAgent(server.URL, 10*time.Millisecond, time.Hour, "", 1, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		a.RunContext(ctx)
+		close(done)
+	}()
+
+	time.Sleep(200 * time.Millisecond)
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("RunContext did not return after cancel")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if requests != 1 {
+		t.Fatalf("expected exactly one final batch delivered, got %d", requests)
+	}
+}
+
+func TestAgent_Accumulate_StopsOnCancel(t *testing.T) {
+	a := NewAgent("", time.Second, time.Second, "", 1, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		a.accumulate(ctx)
+		close(done)
+	}()
+
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("accumulate did not return after cancel")
+	}
 }

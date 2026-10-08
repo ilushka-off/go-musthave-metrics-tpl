@@ -4,13 +4,13 @@ import (
 	"context"
 	"crypto/rsa"
 	"database/sql"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -36,7 +36,7 @@ func main() {
 	fmt.Printf("Build commit: %s\n", buildCommit)
 
 	addr := flag.String("a", "localhost:8080", "HTTP server address")
-	storeInterval := flag.Int("i", 300, "Store interval in seconds")
+	storeSeconds := flag.Int("i", 300, "Store interval in seconds")
 	filePath := flag.String("f", "metrics.json", "File path to store metrics")
 	restore := flag.Bool("r", false, "Restore metrics from file, if true")
 	databaseDsn := flag.String("d", "", "Database DSN")
@@ -48,87 +48,48 @@ func main() {
 	configLong := flag.String("config", "", "Path to JSON config file")
 	flag.Parse()
 
+	// Kept as time.Duration so a sub-second store_interval from the config
+	// file is not truncated to zero (which would switch to synchronous saving).
+	storeInterval := time.Duration(*storeSeconds) * time.Second
+
 	if path := config.Path(*configShort, *configLong); path != "" {
 		fc, err := config.LoadServer(path)
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		set := config.ExplicitFlags()
-		if fc.Address != nil && !set["a"] {
-			*addr = *fc.Address
-		}
-		if fc.Restore != nil && !set["r"] {
-			*restore = *fc.Restore
-		}
-		if fc.StoreInterval != nil && !set["i"] {
-			*storeInterval = fc.StoreInterval.Seconds()
-		}
-		if fc.StoreFile != nil && !set["f"] {
-			*filePath = *fc.StoreFile
-		}
-		if fc.DatabaseDSN != nil && !set["d"] {
-			*databaseDsn = *fc.DatabaseDSN
-		}
-		if fc.CryptoKey != nil && !set["crypto-key"] {
-			*cryptoKey = *fc.CryptoKey
-		}
-		if fc.Key != nil && !set["k"] {
-			*key = *fc.Key
-		}
-		if fc.AuditFile != nil && !set["audit-file"] {
-			*auditFile = *fc.AuditFile
-		}
-		if fc.AuditURL != nil && !set["audit-url"] {
-			*auditURL = *fc.AuditURL
-		}
+		m := config.NewMerger(flag.CommandLine)
+		m.String("a", addr, fc.Address)
+		m.Bool("r", restore, fc.Restore)
+		m.Duration("i", &storeInterval, fc.StoreInterval)
+		m.String("f", filePath, fc.StoreFile)
+		m.String("d", databaseDsn, fc.DatabaseDSN)
+		m.String("crypto-key", cryptoKey, fc.CryptoKey)
+		m.String("k", key, fc.Key)
+		m.String("audit-file", auditFile, fc.AuditFile)
+		m.String("audit-url", auditURL, fc.AuditURL)
 	}
 
-	if envAddr, ok := os.LookupEnv("ADDRESS"); ok {
-		*addr = envAddr
+	config.EnvString("ADDRESS", addr)
+	// FILE_STORAGE_PATH takes precedence over STORE_FILE.
+	config.EnvString("STORE_FILE", filePath)
+	config.EnvString("FILE_STORAGE_PATH", filePath)
+	config.EnvString("KEY", key)
+	config.EnvString("CRYPTO_KEY", cryptoKey)
+	config.EnvString("AUDIT_FILE", auditFile)
+	config.EnvString("AUDIT_URL", auditURL)
+	if err := errors.Join(
+		config.EnvSeconds("STORE_INTERVAL", &storeInterval),
+		config.EnvBool("RESTORE", restore),
+	); err != nil {
+		log.Fatal(err)
 	}
-
-	if envStoreInterval, ok := os.LookupEnv("STORE_INTERVAL"); ok {
-		var err error
-		*storeInterval, err = strconv.Atoi(envStoreInterval)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	if envFilePath, ok := os.LookupEnv("FILE_STORAGE_PATH"); ok {
-		*filePath = envFilePath
-	} else if envFilePath, ok := os.LookupEnv("STORE_FILE"); ok {
-		*filePath = envFilePath
-	}
-
-	if envRestore, ok := os.LookupEnv("RESTORE"); ok {
-		var err error
-		*restore, err = strconv.ParseBool(envRestore)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-
 	if envDatabaseDsn := os.Getenv("DATABASE_DSN"); envDatabaseDsn != "" {
 		*databaseDsn = envDatabaseDsn
 	}
 
-	if hashKey, ok := os.LookupEnv("KEY"); ok {
-		*key = hashKey
-	}
-
-	if envCryptoKey, ok := os.LookupEnv("CRYPTO_KEY"); ok {
-		*cryptoKey = envCryptoKey
-	}
-
-	if envAuditFile, ok := os.LookupEnv("AUDIT_FILE"); ok {
-		*auditFile = envAuditFile
-	}
-
-	if envAuditURL, ok := os.LookupEnv("AUDIT_URL"); ok {
-		*auditURL = envAuditURL
-	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
+	defer stop()
 
 	logger, err := zap.NewProduction()
 	if err != nil {
@@ -160,17 +121,18 @@ func main() {
 	}
 
 	var storage repository.Storage
+	var saverDone chan struct{}
 	var pingHandler *handler.PingHandler
 
 	if *databaseDsn != "" {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		pingCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		var db *sql.DB
 		db, err = sql.Open("pgx", *databaseDsn)
 		if err != nil {
 			logger.Fatal("Failed to connect to database", zap.Error(err))
 		}
-		err = db.PingContext(ctx)
+		err = db.PingContext(pingCtx)
 		if err != nil {
 			logger.Fatal("Failed to ping database", zap.Error(err))
 		}
@@ -187,11 +149,20 @@ func main() {
 			logger.Error("Failed to create file storage", zap.Error(err))
 		}
 
-		if *storeInterval > 0 {
+		if storeInterval > 0 {
+			saverDone = make(chan struct{})
 			go func() {
-				ticker := time.NewTicker(time.Duration(*storeInterval) * time.Second)
+				defer close(saverDone)
+				ticker := time.NewTicker(storeInterval)
+				defer ticker.Stop()
 
-				for range ticker.C {
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case <-ticker.C:
+					}
+
 					err := repository.SaveToFile(storage, *filePath)
 					if err != nil {
 						logger.Error("Failed to save metrics to file", zap.Error(err))
@@ -217,14 +188,21 @@ func main() {
 		}
 	}()
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	<-ctx.Done()
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Error("HTTP server shutdown error", zap.Error(err))
+	}
+
+	// Flush metrics that the periodic saver has not written yet. Requests
+	// are drained at this point, so the snapshot is complete.
+	if saverDone != nil {
+		<-saverDone
+		if err := repository.SaveToFile(storage, *filePath); err != nil {
+			logger.Error("Failed to save metrics to file on shutdown", zap.Error(err))
+		}
 	}
 
 	// The HTTP server has stopped accepting and has drained in-flight
