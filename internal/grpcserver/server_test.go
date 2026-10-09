@@ -14,7 +14,6 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
-	"google.golang.org/grpc/test/bufconn"
 )
 
 func start(t *testing.T, subnet string) (pb.MetricsClient, repository.Storage) {
@@ -31,15 +30,19 @@ func start(t *testing.T, subnet string) (pb.MetricsClient, repository.Storage) {
 
 	log := zap.NewNop()
 	storage := repository.NewMemStorage()
-	lis := bufconn.Listen(1 << 20)
+	// A real TCP listener (not bufconn) so the interceptor sees an IP peer
+	// address: calls always come from 127.0.0.1.
+	var lc net.ListenConfig
+	lis, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
 	srv := grpc.NewServer(grpc.ChainUnaryInterceptor(TrustedSubnetInterceptor(trusted, log)))
 	pb.RegisterMetricsServer(srv, New(storage, log, audit.NewAuditor(log)))
 	go func() { _ = srv.Serve(lis) }()
 	t.Cleanup(srv.Stop)
 
-	conn, err := grpc.NewClient("passthrough:///bufnet",
-		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) { return lis.DialContext(ctx) }),
-		grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,20 +96,22 @@ func TestUpdateMetrics_EmptyAndInvalid(t *testing.T) {
 }
 
 func TestTrustedSubnetInterceptor(t *testing.T) {
-	client, _ := start(t, "192.168.1.0/24")
-
+	// The peer address is always 127.0.0.1; only it decides, x-real-ip does not.
 	tests := []struct {
-		name string
-		ctx  context.Context
-		want codes.Code
+		name   string
+		subnet string
+		ctx    context.Context
+		want   codes.Code
 	}{
-		{"inside subnet", withIP("192.168.1.7"), codes.OK},
-		{"outside subnet", withIP("10.0.0.1"), codes.PermissionDenied},
-		{"malformed", withIP("nope"), codes.PermissionDenied},
-		{"missing metadata", context.Background(), codes.PermissionDenied},
+		{"peer inside subnet", "127.0.0.0/8", withIP("127.0.0.1"), codes.OK},
+		{"peer inside subnet, missing metadata", "127.0.0.0/8", context.Background(), codes.OK},
+		{"peer inside subnet, mismatched x-real-ip", "127.0.0.0/8", withIP("10.0.0.1"), codes.OK},
+		{"peer outside subnet", "192.168.1.0/24", context.Background(), codes.PermissionDenied},
+		{"peer outside subnet, forged x-real-ip", "192.168.1.0/24", withIP("192.168.1.7"), codes.PermissionDenied},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			client, _ := start(t, tt.subnet)
 			_, err := client.UpdateMetrics(tt.ctx, batch())
 			if got := status.Code(err); got != tt.want {
 				t.Fatalf("got %v, want %v", got, tt.want)

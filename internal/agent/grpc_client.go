@@ -15,9 +15,8 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// grpcCallTimeout bounds a single UpdateMetrics attempt. It is independent of
-// the agent's run context so the final batch can still be delivered while the
-// agent is shutting down.
+// grpcCallTimeout bounds a single UpdateMetrics attempt on top of the
+// context passed to sendMetricsGRPC.
 const grpcCallTimeout = 5 * time.Second
 
 func dialGRPC(address string) (*grpc.ClientConn, error) {
@@ -28,7 +27,10 @@ func dialGRPC(address string) (*grpc.ClientConn, error) {
 	return conn, nil
 }
 
-func sendMetricsGRPC(client pb.MetricsClient, address string, metrics []models.Metrics) error {
+// sendMetricsGRPC sends metrics in a single UpdateMetrics call with realIP in
+// the "x-real-ip" metadata. Each attempt and the waits between retries are
+// bound to ctx, so cancelling it aborts in-flight calls.
+func sendMetricsGRPC(ctx context.Context, client pb.MetricsClient, realIP string, metrics []models.Metrics) error {
 	req := &pb.UpdateMetricsRequest{Metrics: make([]*pb.Metric, 0, len(metrics))}
 	for _, m := range metrics {
 		pm := &pb.Metric{Id: m.ID}
@@ -49,14 +51,12 @@ func sendMetricsGRPC(client pb.MetricsClient, address string, metrics []models.M
 		req.Metrics = append(req.Metrics, pm)
 	}
 
-	realIP := localIP("grpc://" + address)
-
-	return retry.Do(retry.Delays, isGRPCRetriable, func() error {
-		ctx, cancel := context.WithTimeout(context.Background(), grpcCallTimeout)
+	return retry.DoContext(ctx, retry.Delays, isGRPCRetriable, func() error {
+		callCtx, cancel := context.WithTimeout(ctx, grpcCallTimeout)
 		defer cancel()
 
-		ctx = metadata.AppendToOutgoingContext(ctx, "x-real-ip", realIP)
-		if _, err := client.UpdateMetrics(ctx, req); err != nil {
+		callCtx = metadata.AppendToOutgoingContext(callCtx, "x-real-ip", realIP)
+		if _, err := client.UpdateMetrics(callCtx, req); err != nil {
 			return fmt.Errorf("grpc update metrics: %w", err)
 		}
 		return nil

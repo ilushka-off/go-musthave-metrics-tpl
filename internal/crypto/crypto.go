@@ -23,7 +23,7 @@ func LoadPublicKey(path string) (*rsa.PublicKey, error) {
 		return nil, err
 	}
 
-	if pub, err := x509.ParsePKIXPublicKey(block.Bytes); err == nil {
+	if pub, pkixErr := x509.ParsePKIXPublicKey(block.Bytes); pkixErr == nil {
 		key, ok := pub.(*rsa.PublicKey)
 		if !ok {
 			return nil, errors.New("public key is not an RSA key")
@@ -45,7 +45,7 @@ func LoadPrivateKey(path string) (*rsa.PrivateKey, error) {
 		return nil, err
 	}
 
-	if key, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
+	if key, pkcs1Err := x509.ParsePKCS1PrivateKey(block.Bytes); pkcs1Err == nil {
 		return key, nil
 	}
 

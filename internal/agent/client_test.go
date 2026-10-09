@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net"
@@ -76,7 +77,7 @@ func TestSendMetricsBatch(t *testing.T) {
 		{ID: "PollCount", MType: models.Counter, Delta: &delta},
 	}
 
-	if err := sendMetricsBatch(server.URL, metrics, "", nil); err != nil {
+	if err := sendMetricsBatch(context.Background(), server.URL, "127.0.0.1", metrics, "", nil); err != nil {
 		t.Fatalf("sendMetricsBatch returned error: %v", err)
 	}
 
@@ -98,7 +99,7 @@ func TestSendMetricsBatch(t *testing.T) {
 }
 
 func TestSendMetricsBatch_ConnectionError(t *testing.T) {
-	if err := sendMetricsBatch("http://127.0.0.1:0", []models.Metrics{{ID: "Foo", MType: models.Gauge}}, "", nil); err == nil {
+	if err := sendMetricsBatch(context.Background(), "http://127.0.0.1:0", "127.0.0.1", []models.Metrics{{ID: "Foo", MType: models.Gauge}}, "", nil); err == nil {
 		t.Fatal("expected error for unreachable server, got nil")
 	}
 }
@@ -133,10 +134,46 @@ func TestSendMetricsBatch_SetsXRealIP(t *testing.T) {
 	}))
 	defer server.Close()
 
-	if err := sendMetricsBatch(server.URL, []models.Metrics{{ID: "Foo", MType: models.Gauge}}, "", nil); err != nil {
+	if err := sendMetricsBatch(context.Background(), server.URL, "10.1.2.3", []models.Metrics{{ID: "Foo", MType: models.Gauge}}, "", nil); err != nil {
 		t.Fatal(err)
 	}
-	if net.ParseIP(got) == nil {
-		t.Fatalf("X-Real-IP = %q, want a valid IP", got)
+	if got != "10.1.2.3" {
+		t.Fatalf("X-Real-IP = %q, want %q", got, "10.1.2.3")
+	}
+}
+
+func TestLocalIP_ReturnsValidIP(t *testing.T) {
+	for _, hostPort := range []string{"127.0.0.1:8080", httpHostPort("http://localhost"), ""} {
+		if got := localIP(hostPort); net.ParseIP(got) == nil {
+			t.Fatalf("localIP(%q) = %q, want a valid IP", hostPort, got)
+		}
+	}
+}
+
+func TestHTTPHostPort(t *testing.T) {
+	tests := map[string]string{
+		"http://localhost:8080": "localhost:8080",
+		"http://localhost":      "localhost:80",
+		"https://example.com":   "example.com:443",
+		"localhost:8080":        "",
+		"":                      "",
+	}
+	for in, want := range tests {
+		if got := httpHostPort(in); got != want {
+			t.Errorf("httpHostPort(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestGRPCHostPort(t *testing.T) {
+	tests := map[string]string{
+		"localhost:3200": "localhost:3200",
+		"localhost":      "localhost:443",
+		"[::1]:3200":     "[::1]:3200",
+	}
+	for in, want := range tests {
+		if got := grpcHostPort(in); got != want {
+			t.Errorf("grpcHostPort(%q) = %q, want %q", in, got, want)
+		}
 	}
 }

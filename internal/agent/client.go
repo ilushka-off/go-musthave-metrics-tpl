@@ -24,7 +24,7 @@ func sendMetrics(serverAddress, mType, name, value string) error {
 		return fmt.Errorf("build request url: %w", err)
 	}
 
-	realIP := localIP(serverAddress)
+	realIP := localIP(httpHostPort(serverAddress))
 
 	return retry.Do(retry.Delays, isConnRetriable, func() error {
 		req, err := http.NewRequest("POST", reqURL, nil)
@@ -64,7 +64,7 @@ func sendMetricsJSON(serverAddress string, metrics models.Metrics) error {
 		return fmt.Errorf("build request url: %w", err)
 	}
 
-	realIP := localIP(serverAddress)
+	realIP := localIP(httpHostPort(serverAddress))
 
 	return retry.Do(retry.Delays, isConnRetriable, func() error {
 		req, err := http.NewRequest("POST", reqURL, bytes.NewReader(gzData))
@@ -90,7 +90,10 @@ func sendMetricsJSON(serverAddress string, metrics models.Metrics) error {
 	})
 }
 
-func sendMetricsBatch(serverAddress string, metrics []models.Metrics, hashKey string, publicKey *rsa.PublicKey) error {
+// sendMetricsBatch posts metrics to serverAddress/updates with realIP in the
+// X-Real-IP header. Each attempt and the waits between retries are bound to
+// ctx.
+func sendMetricsBatch(ctx context.Context, serverAddress, realIP string, metrics []models.Metrics, hashKey string, publicKey *rsa.PublicKey) error {
 	data, err := json.Marshal(metrics)
 	if err != nil {
 		return fmt.Errorf("marshal metrics: %w", err)
@@ -118,10 +121,8 @@ func sendMetricsBatch(serverAddress string, metrics []models.Metrics, hashKey st
 		return fmt.Errorf("build request url: %w", err)
 	}
 
-	realIP := localIP(serverAddress)
-
-	return retry.Do(retry.Delays, isConnRetriable, func() error {
-		req, err := http.NewRequest("POST", reqURL, bytes.NewReader(body))
+	return retry.DoContext(ctx, retry.Delays, isConnRetriable, func() error {
+		req, err := http.NewRequestWithContext(ctx, "POST", reqURL, bytes.NewReader(body))
 		if err != nil {
 			return fmt.Errorf("build request: %w", err)
 		}
@@ -150,21 +151,45 @@ func isConnRetriable(err error) bool {
 	return ok
 }
 
-// localIP returns the IP address of this host that is used to reach
-// serverAddress, for the X-Real-IP header. It "connects" a UDP socket (which
-// sends no packets) and reads the chosen local address, falling back to the
-// first non-loopback interface address and finally to 127.0.0.1.
-func localIP(serverAddress string) string {
-	if u, err := url.Parse(serverAddress); err == nil && u.Host != "" {
-		host := u.Host
-		if _, _, err := net.SplitHostPort(host); err != nil {
-			host = net.JoinHostPort(u.Hostname(), "80")
-		}
+// httpHostPort returns the host:port of the HTTP server at serverAddress (a
+// URL such as "http://localhost:8080"). A URL without a port gets the default
+// port of its scheme. It returns "" if serverAddress has no host.
+func httpHostPort(serverAddress string) string {
+	u, err := url.Parse(serverAddress)
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	if u.Port() != "" {
+		return u.Host
+	}
+	port := "80"
+	if u.Scheme == "https" {
+		port = "443"
+	}
+	return net.JoinHostPort(u.Hostname(), port)
+}
+
+// grpcHostPort returns the host:port of the gRPC server at address. An
+// address without a port gets 443, the port gRPC itself defaults to.
+func grpcHostPort(address string) string {
+	if _, _, err := net.SplitHostPort(address); err == nil {
+		return address
+	}
+	return net.JoinHostPort(address, "443")
+}
+
+// localIP returns the IP address of this host that is used to reach the
+// server at hostPort, for the X-Real-IP header. It "connects" a UDP socket
+// (which sends no packets) and reads the chosen local address, falling back to
+// the first non-loopback interface address and finally to 127.0.0.1. The
+// address does not change while the agent runs, so callers compute it once.
+func localIP(hostPort string) string {
+	if hostPort != "" {
 		// IPv4 is tried first: a name such as "localhost" may resolve to
 		// ::1 for UDP although the HTTP connection goes over IPv4.
 		var d net.Dialer
 		for _, network := range []string{"udp4", "udp"} {
-			conn, err := d.DialContext(context.Background(), network, host)
+			conn, err := d.DialContext(context.Background(), network, hostPort)
 			if err != nil {
 				continue
 			}

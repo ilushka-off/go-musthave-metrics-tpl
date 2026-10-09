@@ -71,12 +71,16 @@ func main() {
 		m.String("f", filePath, fc.StoreFile)
 		m.String("d", databaseDsn, fc.DatabaseDSN)
 		m.String("crypto-key", cryptoKey, fc.CryptoKey)
+		m.String("t", trustedSubnet, fc.TrustedSubnet)
+		m.String("grpc-address", grpcAddress, fc.GRPCAddress)
 		m.String("k", key, fc.Key)
 		m.String("audit-file", auditFile, fc.AuditFile)
 		m.String("audit-url", auditURL, fc.AuditURL)
 	}
 
 	config.EnvString("ADDRESS", addr)
+	config.EnvString("TRUSTED_SUBNET", trustedSubnet)
+	config.EnvString("GRPC_ADDRESS", grpcAddress)
 	// FILE_STORAGE_PATH takes precedence over STORE_FILE.
 	config.EnvString("STORE_FILE", filePath)
 	config.EnvString("FILE_STORAGE_PATH", filePath)
