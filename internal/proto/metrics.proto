@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package metrics;
+
+option go_package = "github.com/ilushka-off/go-musthave-metrics-tpl/internal/proto";
+
+// Metric определяет единичную метрику.
+message Metric {
+  string id = 1; // имя метрики
+
+  // MType задаёт тип метрики.
+  enum MType {
+    GAUGE = 0;
+    COUNTER = 1;
+  }
+
+  MType type = 2; // тип метрики
+  // Поле delta для метрик-счётчиков.
+  int64 delta = 3;
+  // Поле value для метрик-измерителей.
+  double value = 4;
+}
+
+// UpdateMetricsRequest содержит список метрик для обновления.
+message UpdateMetricsRequest {
+  repeated Metric metrics = 1;
+}
+
+// UpdateMetricsResponse — пустой ответ для подтверждения успешного обновления.
+message UpdateMetricsResponse {}
+
+// MetricsService определяет сервис для работы с метриками.
+service Metrics {
+  // UpdateMetrics обновляет метрики на сервере.
+  // Этот метод подходит для отправки как единичных метрик, так и батчей.
+  rpc UpdateMetrics(UpdateMetricsRequest) returns (UpdateMetricsResponse);
+}

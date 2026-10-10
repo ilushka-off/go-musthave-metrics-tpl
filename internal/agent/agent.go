@@ -1,6 +1,6 @@
 // Package agent implements the metrics-collection agent: it periodically
 // polls runtime and system metrics and reports them to the server over
-// HTTP.
+// HTTP or gRPC.
 package agent
 
 import (
@@ -10,7 +10,13 @@ import (
 	"time"
 
 	models "github.com/ilushka-off/go-musthave-metrics-tpl/internal/model"
+	pb "github.com/ilushka-off/go-musthave-metrics-tpl/internal/proto"
+	"google.golang.org/grpc"
 )
+
+// shutdownTimeout is how long reports may keep running after the agent's
+// context is cancelled before they are aborted.
+const shutdownTimeout = 5 * time.Second
 
 // Agent periodically collects runtime and system metrics and reports them
 // to a metrics server. Create one with NewAgent and start it with Run.
@@ -20,9 +26,14 @@ type Agent struct {
 	reportInterval time.Duration
 	hashKey        string
 	publicKey      *rsa.PublicKey
-	rateLimit      int
-	metricsCh      chan models.Metrics
-	snapshotCh     chan chan []models.Metrics
+	// realIP is this host's address as seen on the route to the server,
+	// sent with every report. It is computed once, when the server is set.
+	realIP     string
+	grpcConn   *grpc.ClientConn
+	grpcClient pb.MetricsClient
+	rateLimit  int
+	metricsCh  chan models.Metrics
+	snapshotCh chan chan []models.Metrics
 }
 
 // NewAgent creates an Agent that polls metrics every pollInterval and
@@ -41,10 +52,26 @@ func NewAgent(serverAddress string, pollInterval, reportInterval time.Duration, 
 		reportInterval: reportInterval,
 		hashKey:        hashKey,
 		publicKey:      publicKey,
+		realIP:         localIP(httpHostPort(serverAddress)),
 		rateLimit:      rateLimit,
 		metricsCh:      make(chan models.Metrics),
 		snapshotCh:     make(chan chan []models.Metrics),
 	}
+}
+
+// UseGRPC makes the agent report to the gRPC server at address instead of the
+// HTTP server. It must be called before Run or RunContext. Request signing
+// and encryption apply to HTTP only and are not used over gRPC.
+func (a *Agent) UseGRPC(address string) error {
+	conn, err := dialGRPC(address)
+	if err != nil {
+		return err
+	}
+
+	a.grpcConn = conn
+	a.grpcClient = pb.NewMetricsClient(conn)
+	a.realIP = localIP(grpcHostPort(address))
+	return nil
 }
 
 // Run starts polling and reporting. It blocks forever, driving the
@@ -55,14 +82,28 @@ func (a *Agent) Run() {
 
 // RunContext is like Run but stops when ctx is cancelled. On cancellation
 // polling stops, the metrics accumulated since the last report are sent as a
-// final batch, and RunContext returns only after every queued and in-flight
-// report has been delivered (or has exhausted its retries).
+// final batch, and RunContext returns once every queued and in-flight report
+// has been delivered, has exhausted its retries, or shutdownTimeout has passed
+// since cancellation -- whichever comes first. RunContext closes the gRPC
+// connection opened by UseGRPC before returning.
 func (a *Agent) RunContext(ctx context.Context) {
+	if a.grpcConn != nil {
+		defer func() { _ = a.grpcConn.Close() }()
+	}
+
 	// accumulate gets its own context: it must outlive ctx to serve the final
 	// snapshot below, and is stopped only after that.
 	accCtx, stopAcc := context.WithCancel(context.Background())
 	defer stopAcc()
 	go a.accumulate(accCtx)
+
+	// Reports outlive ctx so the final batch can still be sent, but not
+	// forever: shutdownTimeout after ctx is cancelled every in-flight request
+	// and pending retry is aborted.
+	sendCtx, cancelSend := context.WithCancel(context.WithoutCancel(ctx))
+	defer cancelSend()
+	stopGrace := context.AfterFunc(ctx, func() { time.AfterFunc(shutdownTimeout, cancelSend) })
+	defer stopGrace()
 
 	var pollers sync.WaitGroup
 	pollers.Add(2)
@@ -73,7 +114,7 @@ func (a *Agent) RunContext(ctx context.Context) {
 	var workers sync.WaitGroup
 	for i := 0; i < a.rateLimit; i++ {
 		workers.Add(1)
-		go func() { defer workers.Done(); a.worker(jobs) }()
+		go func() { defer workers.Done(); a.worker(sendCtx, jobs) }()
 	}
 
 	a.scheduleReports(ctx, jobs)
@@ -196,8 +237,12 @@ func (a *Agent) reportOnce(jobs chan<- []models.Metrics) {
 	jobs <- metrics
 }
 
-func (a *Agent) worker(jobs <-chan []models.Metrics) {
+func (a *Agent) worker(ctx context.Context, jobs <-chan []models.Metrics) {
 	for metrics := range jobs {
-		_ = sendMetricsBatch(a.serverAddress, metrics, a.hashKey, a.publicKey)
+		if a.grpcClient != nil {
+			_ = sendMetricsGRPC(ctx, a.grpcClient, a.realIP, metrics)
+			continue
+		}
+		_ = sendMetricsBatch(ctx, a.serverAddress, a.realIP, metrics, a.hashKey, a.publicKey)
 	}
 }

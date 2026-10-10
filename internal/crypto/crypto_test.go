@@ -62,8 +62,8 @@ func TestLoadKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 	write := func(path, typ string, der []byte) {
-		if err := os.WriteFile(path, pem.EncodeToMemory(&pem.Block{Type: typ, Bytes: der}), 0o600); err != nil {
-			t.Fatal(err)
+		if writeErr := os.WriteFile(path, pem.EncodeToMemory(&pem.Block{Type: typ, Bytes: der}), 0o600); writeErr != nil {
+			t.Fatal(writeErr)
 		}
 	}
 	write(privPath, "RSA PRIVATE KEY", x509.MarshalPKCS1PrivateKey(priv))

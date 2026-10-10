@@ -2,7 +2,10 @@
 // caller-supplied backoff delays.
 package retry
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 // Delays is the default backoff schedule used for retrying storage
 // operations: three attempts spaced 1s, 3s, and 5s apart.
@@ -17,6 +20,12 @@ var Delays = []time.Duration{
 // soon as op succeeds, or the last error once delays is exhausted or
 // isRetriable reports false.
 func Do(delays []time.Duration, isRetriable func(error) bool, op func() error) error {
+	return DoContext(context.Background(), delays, isRetriable, op)
+}
+
+// DoContext is like Do but stops waiting for the next attempt as soon as ctx
+// is cancelled, returning the last error of op.
+func DoContext(ctx context.Context, delays []time.Duration, isRetriable func(error) bool, op func() error) error {
 	err := op()
 	if err == nil {
 		return nil
@@ -26,7 +35,13 @@ func Do(delays []time.Duration, isRetriable func(error) bool, op func() error) e
 		if !isRetriable(err) {
 			return err
 		}
-		time.Sleep(delay)
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return err
+		case <-timer.C:
+		}
 		err = op()
 		if err == nil {
 			return nil

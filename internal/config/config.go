@@ -37,6 +37,8 @@ type Server struct {
 	StoreFile     *string   `json:"store_file"`
 	DatabaseDSN   *string   `json:"database_dsn"`
 	CryptoKey     *string   `json:"crypto_key"`
+	TrustedSubnet *string   `json:"trusted_subnet"`
+	GRPCAddress   *string   `json:"grpc_address"`
 	Key           *string   `json:"key"`
 	AuditFile     *string   `json:"audit_file"`
 	AuditURL      *string   `json:"audit_url"`
@@ -47,6 +49,7 @@ type Agent struct {
 	Address        *string   `json:"address"`
 	ReportInterval *Duration `json:"report_interval"`
 	PollInterval   *Duration `json:"poll_interval"`
+	GRPCAddress    *string   `json:"grpc_address"`
 	CryptoKey      *string   `json:"crypto_key"`
 	Key            *string   `json:"key"`
 	RateLimit      *int      `json:"rate_limit"`

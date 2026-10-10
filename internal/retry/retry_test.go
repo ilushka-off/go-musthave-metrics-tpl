@@ -1,10 +1,34 @@
 package retry
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
 )
+
+func TestDoContext_StopsWaitingOnCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	calls := 0
+	sentinel := errors.New("temporary")
+	start := time.Now()
+	err := DoContext(ctx, []time.Duration{time.Hour}, func(error) bool { return true }, func() error {
+		calls++
+		return sentinel
+	})
+
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("expected sentinel error, got %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("expected exactly 1 call, got %d", calls)
+	}
+	if time.Since(start) > time.Second {
+		t.Fatal("DoContext kept waiting after ctx was cancelled")
+	}
+}
 
 func TestDo_SucceedsFirstTry(t *testing.T) {
 	calls := 0
